@@ -10,15 +10,15 @@ $admin = 6365371142; //adminid
 // Manba: @thewwiw && @WonderfulCoders Manba bilan tarqat
 // Manba: @thewwiw && @WonderfulCoders Manba bilan tarqat
 
-define("DB_SERVER", "localhost");
-define("DB_USERNAME", "DATABASEUSERNOMI");
-define("DB_PASSWORD", "DATABASEPAROLI");
-define("DB_NAME", "DATABASENOMI");
+define("DB_SERVER", "postgres.railway.internal");
+define("DB_USERNAME", "postgres");
+define("DB_PASSWORD", "yWNtsBemGYmoSoLryheChYQzMxYivEPI");
+define("DB_NAME", "postgres");
 define('PROHAMYON_SHOP_ID', '652059'); // @ProHamyonBot dan olingan shop id
 define('PROHAMYON_SHOP_KEY', '2Y1AKK4MOS'); // @ProHamyonBot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@kinochitestuz'); // Tolovlar kanali
 
-$card_number = "9860600401573909";
+$card_number = "5614683582279246";
 
 $connect = mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
 if (!$connect) {
