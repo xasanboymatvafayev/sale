@@ -10,20 +10,21 @@ $admin = 6365371142; //adminid
 // Manba: @thewwiw && @WonderfulCoders Manba bilan tarqat
 // Manba: @thewwiw && @WonderfulCoders Manba bilan tarqat
 
-define("DB_SERVER", "postgres.railway.internal");
-define("DB_USERNAME", "postgres");
-define("DB_PASSWORD", "BDAaILJKOITNLlMOjJNfWiRPbICwEcpZ");
-define("DB_NAME", "postgres");
+define("DB_SERVER", "autorack.proxy.rlwy.net");
+define("DB_USERNAME", "root");
+define("DB_PASSWORD", "SngtdKxJGJMafHfetMzLBszTQwMprNwi");
+define("DB_NAME", "railway");
+define("DB_PORT", 57444);
 define('PROHAMYON_SHOP_ID', '652059'); // @ProHamyonBot dan olingan shop id
 define('PROHAMYON_SHOP_KEY', '652059'); // @ProHamyonBot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
 
 $card_number = "5614683582279246";
 
-$connect = mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
+$connect = mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME, DB_PORT);
 if (!$connect) {
     error_log("DB connection failed: " . mysqli_connect_error());
-    exit;
+    exit("DB ga ulanishda xato yuz berdi!");
 }
 mysqli_set_charset($connect, "utf8mb4");
 
