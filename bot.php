@@ -2,7 +2,7 @@
 ob_start();
 error_reporting(E_ALL);
 date_default_timezone_set('Asia/Tashkent');
-define("API_KEY", '8233780541:AAHV0ZH67NWoluF49RPpj6BuWgmbSWjEIOk');  //token
+define("API_KEY", '8663180438:AAFKDMYpbmvVhqHFc2IMZre12rpaU03AbEw');  //token
 $admin = 6365371142; //adminid
 // Manba: @thewwiw && @WonderfulCoders Manba bilan tarqat
 // Manba: @thewwiw && @WonderfulCoders Manba bilan tarqat
@@ -12,11 +12,11 @@ $admin = 6365371142; //adminid
 
 define("DB_SERVER", "postgres.railway.internal");
 define("DB_USERNAME", "postgres");
-define("DB_PASSWORD", "yWNtsBemGYmoSoLryheChYQzMxYivEPI");
+define("DB_PASSWORD", "BDAaILJKOITNLlMOjJNfWiRPbICwEcpZ");
 define("DB_NAME", "postgres");
 define('PROHAMYON_SHOP_ID', '652059'); // @ProHamyonBot dan olingan shop id
-define('PROHAMYON_SHOP_KEY', '2Y1AKK4MOS'); // @ProHamyonBot dan olingan shop key
-define('CHANNEL_TO_JOIN', '@kinochitestuz'); // Tolovlar kanali
+define('PROHAMYON_SHOP_KEY', '652059'); // @ProHamyonBot dan olingan shop key
+define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
 
 $card_number = "5614683582279246";
 
@@ -66,7 +66,7 @@ class ProHamyonPay {
     }
 }
 
-$ProHamyonPay = new ProHamyonPay(PROHAMYON_SHOP_ID, PRoHAMYON_SHOP_KEY);
+$ProHamyonPay = new ProHamyonPay(PROHAMYON_SHOP_ID, PROHAMYON_SHOP_KEY);
 
 function bot($method, $datas = []) {
     $url = "https://api.telegram.org/bot" . API_KEY . "/" . $method;
