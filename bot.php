@@ -15,8 +15,8 @@ define("DB_USERNAME", "root");
 define("DB_PASSWORD", "SngtdKxJGJMafHfetMzLBszTQwMprNwi");
 define("DB_NAME", "railway");
 define("DB_PORT", 57444);
-define('PROHAMYON_SHOP_ID', '652059'); // @ProHamyonBot dan olingan shop id
-define('PROHAMYON_SHOP_KEY', '652059'); // @ProHamyonBot dan olingan shop key
+define('PROHAMYON_SHOP_ID', '861440'); // @ProHamyonBot dan olingan shop id
+define('PROHAMYON_SHOP_KEY', '45EO7C7HXF'); // @ProHamyonBot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
 
 $card_number = "5614683582279246";
