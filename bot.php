@@ -15,8 +15,8 @@ define("DB_USERNAME", "root");
 define("DB_PASSWORD", "SngtdKxJGJMafHfetMzLBszTQwMprNwi");
 define("DB_NAME", "railway");
 define("DB_PORT", 57444);
-define('PROHAMYON_SHOP_ID', '861440'); // @ProHamyonBot dan olingan shop id
-define('PROHAMYON_SHOP_KEY', '45EO7C7HXF'); // @ProHamyonBot dan olingan shop key
+define('PROHAMYON_SHOP_ID', '647282'); // @ProHamyonBot dan olingan shop id
+define('PROHAMYON_SHOP_KEY', '884UESPA3H'); // @ProHamyonBot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
 
 $card_number = "5614683582279246";
@@ -38,7 +38,7 @@ class ProHamyonPay {
     }
 
     public function create_checkout($amount){
-        $ch = curl_init("https://tezapi.uz/api?method=create");
+        $ch = curl_init("https://checkcard.uz/api?method=create");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
@@ -57,7 +57,7 @@ class ProHamyonPay {
     }
 
     public function check_payment($order_code){
-        $api_url = "https://tezapi.uz/api?method=check&order=" . urlencode($order_code);
+        $api_url = "https://checkcard.uz/api?method=check&order=" . urlencode($order_code);
         $response = @file_get_contents($api_url);
         if($response === false){
             error_log("ProHamyon check payment failed for order: " . $order_code);
