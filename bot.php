@@ -2,29 +2,28 @@
 ob_start();
 error_reporting(E_ALL);
 date_default_timezone_set('Asia/Tashkent');
+define("API_KEY", '8663180438:AAFKDMYpbmvVhqHFc2IMZre12rpaU03AbEw');  //token
+$admin = 6365371142; //adminid
 
-define("API_KEY", '8663180438:AAFKDMYpbmvVhqHFc2IMZre12rpaU03AbEw'); // Telegram Bot Token
-$admin = 6365371142; // Admin Telegram ID
-
-define("DB_SERVER",   "autorack.proxy.rlwy.net");
+define("DB_SERVER", "autorack.proxy.rlwy.net");
 define("DB_USERNAME", "root");
 define("DB_PASSWORD", "SngtdKxJGJMafHfetMzLBszTQwMprNwi");
-define("DB_NAME",     "railway");
-define("DB_PORT",     57444);
+define("DB_NAME", "railway");
+define("DB_PORT", 57444);
+define('CHECKCARD_SHOP_ID', '647282');   // @CheckCardUz_bot dan olingan shop id
+define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan shop key
+define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
 
-define('CHECKCARD_SHOP_ID',  '647282');  // @CheckCardUz_bot dan olingan
-define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan
-define('CHANNEL_TO_JOIN',    '@Nitesms');
+$card_number = "5614683582279246";
 
-$stars_card   = "5614683582279246";
-$premium_card = "5614683582279246";
-
-// ─── DB ────────────────────────────────────────────────────────────────────
 $connect = mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME, DB_PORT);
-if (!$connect) { error_log("DB connection failed: " . mysqli_connect_error()); exit("DB ga ulanishda xato!"); }
+if (!$connect) {
+    error_log("DB connection failed: " . mysqli_connect_error());
+    exit("DB ga ulanishda xato yuz berdi!");
+}
 mysqli_set_charset($connect, "utf8mb4");
 
-// ─── CheckCard ─────────────────────────────────────────────────────────────
+// ─── Faqat shu class o'zgartirildi: ProHamyonPay → CheckCardPay ─────────────
 class CheckCardPay {
     private $shop_id;
     private $shop_key;
@@ -34,735 +33,1057 @@ class CheckCardPay {
         $this->shop_key = $shop_key;
     }
 
-    public function create($amount) {
-        // 2-hujjatdagi namuna bilan bir xil: GET so'rov
-        $url = "https://checkcard.uz/api?method=create&shop_id=" . urlencode($this->shop_id) . "&shop_key=" . urlencode($this->shop_key) . "&amount=" . intval($amount) . "&payurl=true";
-        $r = @file_get_contents($url);
-        if ($r === false) { error_log("CheckCard create failed, amount=$amount"); return false; }
-        return $r;
+    // GET so'rov — checkcard.uz rasmiy namunasi asosida
+    public function create_checkout($amount) {
+        $api_url = "https://checkcard.uz/api?method=create&shop_id=" . urlencode($this->shop_id) . "&shop_key=" . urlencode($this->shop_key) . "&amount=" . intval($amount) . "&payurl=true";
+        $response = @file_get_contents($api_url);
+        if ($response === false) {
+            error_log("CheckCard create failed, amount=" . $amount);
+            return false;
+        }
+        return $response;
     }
 
-    public function check($order_code) {
-        $url = "https://checkcard.uz/api?" . http_build_query([
-            'method' => 'check',
-            'order'  => $order_code,
-        ]);
-        $r = @file_get_contents($url);
-        if ($r === false) { error_log("CheckCard check failed, order=$order_code"); return false; }
-        return $r;
+    public function check_payment($order_code) {
+        $api_url = "https://checkcard.uz/api?method=check&order=" . urlencode($order_code);
+        $response = @file_get_contents($api_url);
+        if ($response === false) {
+            error_log("CheckCard check payment failed for order: " . $order_code);
+            return false;
+        }
+        return $response;
     }
 
-    public function cancel($order_code) {
-        $url = "https://checkcard.uz/api?" . http_build_query([
-            'method' => 'cancel',
-            'order'  => $order_code,
-        ]);
-        $r = @file_get_contents($url);
-        if ($r === false) { error_log("CheckCard cancel failed, order=$order_code"); return false; }
-        return $r;
+    public function cancel_payment($order_code) {
+        $api_url = "https://checkcard.uz/api?method=cancel&order=" . urlencode($order_code);
+        @file_get_contents($api_url);
     }
 }
-$CC = new CheckCardPay(CHECKCARD_SHOP_ID, CHECKCARD_SHOP_KEY);
 
-// ─── Telegram helpers ───────────────────────────────────────────────────────
-function bot($method, $data = []) {
-    $ch = curl_init("https://api.telegram.org/bot" . API_KEY . "/$method");
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POSTFIELDS => $data]);
+$CheckCardPay = new CheckCardPay(CHECKCARD_SHOP_ID, CHECKCARD_SHOP_KEY);
+
+function bot($method, $datas = []) {
+    $url = "https://api.telegram.org/bot" . API_KEY . "/" . $method;
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $datas);
     $res = curl_exec($ch);
-    if ($res === false) { error_log("TG curl error: " . curl_error($ch)); curl_close($ch); return false; }
+    if ($res === false) {
+        error_log("Telegram API error: " . curl_error($ch));
+        curl_close($ch);
+        return false;
+    }
     curl_close($ch);
-    return json_decode($res, true);
+    $decoded = json_decode($res, true);
+    return $decoded;
 }
 
-function sendMessage($chat_id, $text, $kb = null) {
-    $d = ['chat_id' => $chat_id, 'text' => $text, 'parse_mode' => 'HTML', 'disable_web_page_preview' => true];
-    if ($kb) $d['reply_markup'] = $kb;
-    return bot('sendMessage', $d);
+function sendMessage($chat_id, $text, $reply_markup = null) {
+    $data = ['chat_id' => $chat_id, 'text' => $text, 'parse_mode' => 'HTML', 'disable_web_page_preview' => true];
+    if ($reply_markup) $data['reply_markup'] = $reply_markup;
+    return bot('sendMessage', $data);
 }
 
-function sendAnimation($chat_id, $animation, $caption = null, $kb = null) {
-    $d = ['chat_id' => $chat_id, 'animation' => $animation, 'parse_mode' => 'HTML'];
-    if ($caption)  $d['caption']      = $caption;
-    if ($kb)       $d['reply_markup'] = $kb;
-    return bot('sendAnimation', $d);
+function sendAnimation($chat_id, $animation, $caption = null, $reply_markup = null, $parse_mode = "HTML") {
+    $data = [
+        'chat_id' => $chat_id,
+        'animation' => $animation,
+        'parse_mode' => $parse_mode
+    ];
+    if ($caption) $data['caption'] = $caption;
+    if ($reply_markup) $data['reply_markup'] = $reply_markup;
+
+    return bot('sendAnimation', $data);
 }
 
-function editMessage($chat_id, $msg_id, $text, $kb = null) {
-    $d = ['chat_id' => $chat_id, 'message_id' => $msg_id, 'text' => $text, 'parse_mode' => 'HTML', 'disable_web_page_preview' => true];
-    if ($kb) $d['reply_markup'] = $kb;
-    return bot('editMessageText', $d);
+function deleteMessage($chat_id, $message_id) {
+    if (empty($chat_id) || empty($message_id)) return false;
+    return bot('deleteMessage', ['chat_id' => $chat_id, 'message_id' => $message_id]);
 }
 
-function deleteMessage($chat_id, $msg_id) {
-    if (!$chat_id || !$msg_id) return false;
-    return bot('deleteMessage', ['chat_id' => $chat_id, 'message_id' => $msg_id]);
+function answerCallback($callback_query_id, $text = '', $show_alert = false) {
+    if (empty($callback_query_id)) return false;
+    return bot('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => $text, 'show_alert' => $show_alert]);
 }
 
-function answerCallback($cb_id, $text = '', $alert = false) {
-    if (!$cb_id) return false;
-    return bot('answerCallbackQuery', ['callback_query_id' => $cb_id, 'text' => $text, 'show_alert' => $alert]);
+function editMessage($chat_id, $message_id, $text, $reply_markup = null) {
+    $data = ['chat_id' => $chat_id, 'message_id' => $message_id, 'text' => $text, 'parse_mode' => 'HTML', 'disable_web_page_preview' => true];
+    if ($reply_markup) $data['reply_markup'] = $reply_markup;
+    return bot('editMessageText', $data);
 }
 
-// ─── Step (session) ─────────────────────────────────────────────────────────
-function step_file($chat_id) { return __DIR__ . "/step/{$chat_id}.step"; }
-function save_step($chat_id, $data) {
-    if (!is_dir(__DIR__ . '/step')) mkdir(__DIR__ . '/step', 0755, true);
-    file_put_contents(step_file($chat_id), json_encode($data, JSON_UNESCAPED_UNICODE));
-}
-function load_step($chat_id) {
-    $f = step_file($chat_id);
-    if (!file_exists($f)) return [];
-    $c = json_decode(file_get_contents($f), true);
-    return is_array($c) ? $c : [];
-}
-function clear_step($chat_id) {
-    $f = step_file($chat_id);
-    if (file_exists($f)) unlink($f);
-}
-
-// ─── DB tables ──────────────────────────────────────────────────────────────
 mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `users` (
-    `id`      INT AUTO_INCREMENT PRIMARY KEY,
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT NOT NULL,
-    `step`    TEXT,
-    `date`    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `step` TEXT,
+    `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `review` (
-    `id`             INT AUTO_INCREMENT PRIMARY KEY,
-    `user_id`        BIGINT,
-    `order_id`       TEXT,
-    `price`          INT,
-    `status`         TEXT,
-    `quantity`       INT,
-    `username`       TEXT,
-    `payment_method` VARCHAR(20) DEFAULT 'checkcard',
-    `date`           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `premium_orders` (
-    `id`             INT AUTO_INCREMENT PRIMARY KEY,
-    `user_id`        BIGINT,
-    `order_id`       TEXT,
-    `price`          INT,
-    `status`         TEXT,
-    `quantity`       INT,
-    `username`       TEXT,
-    `payment_method` VARCHAR(20) DEFAULT 'checkcard',
-    `date`           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT,
+    `order_id` TEXT,
+    `price` INT,
+    `status` TEXT,
+    `quantity` INT,
+    `username` TEXT,
+    `payment_method` VARCHAR(20) DEFAULT '',
+    `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `settings` (
-    `id`              INT PRIMARY KEY,
-    `logs`            TEXT,
-    `star_price`      INT,
+    `id` INT PRIMARY KEY,
+    `logs` TEXT,
+    `api_key` TEXT,
+    `star_price` INT,
     `premium_1_month` INT,
     `premium_3_month` INT,
     `premium_6_month` INT,
     `premium_12_month` INT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-$chk = mysqli_fetch_assoc(mysqli_query($connect, "SELECT COUNT(*) as c FROM settings"));
-if (intval($chk['c']) == 0) {
-    $stmt = mysqli_prepare($connect, "INSERT INTO settings VALUES (1,?,?,?,?,?,?)");
-    $logs = CHANNEL_TO_JOIN; $sp = 240; $p1 = 45000; $p3 = 165000; $p6 = 215000; $p12 = 360000;
-    mysqli_stmt_bind_param($stmt, 'siiiii', $logs, $sp, $p1, $p3, $p6, $p12);
-    mysqli_stmt_execute($stmt); mysqli_stmt_close($stmt);
+mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `logs` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT,
+    `price` INT,
+    `status` TEXT,
+    `quantity` INT,
+    `username` TEXT,
+    `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `premium_orders` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT,
+    `order_id` TEXT,
+    `price` INT,
+    `status` TEXT,
+    `quantity` INT,
+    `username` TEXT,
+    `payment_method` VARCHAR(20) DEFAULT '',
+    `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$checkSettings = mysqli_query($connect, "SELECT COUNT(*) as total FROM settings");
+$countRow = mysqli_fetch_assoc($checkSettings);
+$count = intval($countRow['total'] ?? 0);
+if ($count == 0) {
+$stmt = mysqli_prepare($connect, "INSERT INTO settings(id, logs, api_key, star_price, premium_1_month, premium_3_month, premium_6_month, premium_12_month) VALUES (1, ?, ?, ?, ?, ?, ?, ?)");
+$logs = CHANNEL_TO_JOIN;
+$api_key_default = 'none';
+$price_default = 240;
+$premium_1 = 45000;
+$premium_3 = 165000;
+$premium_6 = 215000;
+$premium_12 = 360000;
+mysqli_stmt_bind_param($stmt, 'ssiiiii', $logs, $api_key_default, $price_default, $premium_1, $premium_3, $premium_6, $premium_12);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
 }
 
-function cfg($connect) {
-    $r = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM settings WHERE id=1 LIMIT 1"));
-    return $r ?: ['logs' => CHANNEL_TO_JOIN, 'star_price' => 240, 'premium_1_month' => 45000, 'premium_3_month' => 165000, 'premium_6_month' => 215000, 'premium_12_month' => 360000];
+function step_file($chat_id) { return __DIR__ . "/step/{$chat_id}.step"; }
+function save_step($chat_id, $data) { if (!is_dir(__DIR__ . '/step')) mkdir(__DIR__ . '/step', 0755, true); file_put_contents(step_file($chat_id), json_encode($data, JSON_UNESCAPED_UNICODE)); }
+function load_step($chat_id) { $f = step_file($chat_id); if (!file_exists($f)) return []; $c = json_decode(file_get_contents($f), true); return is_array($c) ? $c : []; }
+function clear_step($chat_id) { $f = step_file($chat_id); if (file_exists($f)) unlink($f); }
+
+function settings($connect) {
+$res = mysqli_query($connect, "SELECT * FROM settings WHERE id = 1 LIMIT 1");
+$row = mysqli_fetch_assoc($res);
+if (!$row) {
+return ['logs' => CHANNEL_TO_JOIN, 'api_key' => 'none', 'star_price' => 240, 'premium_1_month' => 45000, 'premium_3_month' => 165000, 'premium_6_month' => 215000, 'premium_12_month' => 360000];
+}
+return $row;
 }
 
-// ─── Parse update ───────────────────────────────────────────────────────────
-$update   = json_decode(file_get_contents('php://input'), true) ?: [];
+$raw = file_get_contents('php://input');
+$update = json_decode($raw, true) ?: [];
 if (empty($update)) exit;
+$message = $update['message'] ?? null;
+$callback = $update['callback_query'] ?? null;
 
-$message       = $update['message'] ?? null;
-$callback      = $update['callback_query'] ?? null;
-$text          = $message['text'] ?? null;
-$chat_id       = $message['chat']['id'] ?? ($callback['message']['chat']['id'] ?? null);
-$message_id    = $message['message_id'] ?? ($callback['message']['message_id'] ?? null);
-$from          = $message['from'] ?? ($callback['from'] ?? []);
-$from_id       = $from['id'] ?? null;
-$username      = $from['username'] ?? null;
+$text = $message['text'] ?? null;
+$chat_id = $message['chat']['id'] ?? ($callback['message']['chat']['id'] ?? null);
+$message_id = $message['message_id'] ?? ($callback['message']['message_id'] ?? null);
+$from = $message['from'] ?? ($callback['from'] ?? []);
+$from_id = $from['id'] ?? null;
+$username = $from['username'] ?? null;
 $callback_data = $callback['data'] ?? null;
-$callback_id   = $callback['id'] ?? null;
+$callback_id = $callback['id'] ?? null;
 
-// ─── Subscription check ─────────────────────────────────────────────────────
-function is_member($user_id) {
-    $r = bot('getChatMember', ['chat_id' => CHANNEL_TO_JOIN, 'user_id' => $user_id]);
-    if (!$r || empty($r['ok'])) return false;
-    return in_array($r['result']['status'] ?? '', ['member', 'administrator', 'creator']);
+function user_is_member_of_channel($user_id) {
+if (empty($user_id)) return false;
+$resp = bot('getChatMember', ['chat_id' => CHANNEL_TO_JOIN, 'user_id' => $user_id]);
+if (!$resp || empty($resp['ok'])) return false;
+$status = $resp['result']['status'] ?? '';
+return in_array($status, ['member','administrator','creator']);
 }
 
-function sub_prompt($chat_id) {
-    $link = "https://t.me/" . ltrim(CHANNEL_TO_JOIN, '@');
-    $kb   = json_encode(['inline_keyboard' => [
-        [['text' => "🔔 Obuna bo'lish", 'url' => $link]],
-        [['text' => "✅ Tekshirish",     'callback_data' => 'check_subscribe']],
-    ]], JSON_UNESCAPED_UNICODE);
-    sendMessage($chat_id, "<b>❗ Botdan foydalanish uchun kanalga obuna bo'ling:</b>", $kb);
+function require_subscription_prompt($chat_id) {
+$join_link = "https://t.me/" . ltrim(CHANNEL_TO_JOIN, '@');
+$keyboard = json_encode(['inline_keyboard' => [
+[['text' => "🔔 Obuna bo'lish", 'url' => $join_link]],
+[['text' => "✅ Tekshirish", 'callback_data' => 'check_subscribe']]
+]], JSON_UNESCAPED_UNICODE);
+sendMessage($chat_id, "<b>❗ Majburiy obuna talab etiladi.</b>\nBotdan foydalanish uchun quyidagi kanalga obuna bo'ling:", $keyboard);
 }
 
 if (!empty($from_id) && $from_id != $admin) {
-    if ($callback_data === 'check_subscribe') {
-        answerCallback($callback_id, is_member($from_id)
-            ? "✅ Obuna bo'lgansiz. Davom etishingiz mumkin."
-            : "❌ Hali obuna bo'lmadingiz.", true);
-        exit;
-    }
-    if (!is_member($from_id)) { sub_prompt($chat_id); exit; }
+if ($callback_data === 'check_subscribe') {
+if (user_is_member_of_channel($from_id)) {
+answerCallback($callback_id, "✅ Siz kanalga obuna bo'lgansiz. Endi davom etishingiz mumkin.", true);
+} else {
+answerCallback($callback_id, "❌ Hali obuna bo'lmadingiz.", true);
+}
+exit;
 }
 
-// ─── Register user ──────────────────────────────────────────────────────────
+if (!user_is_member_of_channel($from_id)) {
+require_subscription_prompt($chat_id);
+exit;
+}
+}
+
 if ($chat_id) {
-    $st = mysqli_prepare($connect, "SELECT id FROM users WHERE user_id=? LIMIT 1");
-    mysqli_stmt_bind_param($st, 's', $chat_id);
-    mysqli_stmt_execute($st); mysqli_stmt_store_result($st);
-    if (mysqli_stmt_num_rows($st) == 0) {
-        $st2 = mysqli_prepare($connect, "INSERT INTO users (user_id) VALUES (?)");
-        mysqli_stmt_bind_param($st2, 's', $chat_id);
-        mysqli_stmt_execute($st2); mysqli_stmt_close($st2);
-    }
-    mysqli_stmt_close($st);
+$stmt = mysqli_prepare($connect, "SELECT id FROM users WHERE user_id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $chat_id);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_store_result($stmt);
+$num = mysqli_stmt_num_rows($stmt);
+mysqli_stmt_close($stmt);
+if ($num == 0) {
+$stmt2 = mysqli_prepare($connect, "INSERT INTO users (user_id) VALUES (?)");
+mysqli_stmt_bind_param($stmt2, 's', $chat_id);
+mysqli_stmt_execute($stmt2);
+mysqli_stmt_close($stmt2);
+}
 }
 
-// ─── Main menu ──────────────────────────────────────────────────────────────
 $menu = json_encode(['inline_keyboard' => [
-    [['text' => "⭐️ Stars",              'callback_data' => "stars"],
-     ['text' => "👑 Premium",            'callback_data' => "premium"]],
-    [['text' => "📤 Do'stlarga ulashish", 'url' => "https://t.me/share/url?url=https://t.me/"]],
+[['text' => "⭐️ Stars", 'callback_data' => "stars"], ['text' => "👑 Premium", 'callback_data' => "premium"]],
+[['text' => "📤 Do'stlarga ulashish", 'url' => "https://t.me/share/url?url=https://t.me/"]]
 ]], JSON_UNESCAPED_UNICODE);
 
-// ─── /start ──────────────────────────────────────────────────────────────────
 if ($text === "/start") {
-    sendAnimation($chat_id, "https://t.me/PhotosForBots/146",
-        "🎉 <b>Uz Give</b>ga xush kelibsiz!\n\n🎯 <b>Nima olasiz, tanlang:</b>", $menu);
+    sendAnimation($chat_id, "https://t.me/PhotosForBots/146", "🎉 <b>Uz Give</b>ga xush kelibsiz!\n\n🎯 <b>Nima olasiz, tanlang:</b>", $menu, "HTML");
     clear_step($chat_id);
     exit;
 }
 
-// ─── /admin ──────────────────────────────────────────────────────────────────
 if ($text === "/admin" && $from_id == $admin) {
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "📊 Statistika",           'callback_data' => "admin_stats"],
-         ['text' => "💰 Narxlar",              'callback_data' => "admin_prices"]],
-        [['text' => "📝 Loglar",               'callback_data' => "admin_logs"],
-         ['text' => "👥 Foydalanuvchilar",     'callback_data' => "admin_users"]],
-    ]], JSON_UNESCAPED_UNICODE);
-    sendMessage($chat_id, "<b>🔧 Admin Panel</b>", $kb);
-    exit;
-}
-
-// ─── Admin callbacks ─────────────────────────────────────────────────────────
-$admin_back_kb = json_encode(['inline_keyboard' => [[['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]]], JSON_UNESCAPED_UNICODE);
-
-if ($callback_data === "admin_back" && $from_id == $admin) {
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "📊 Statistika",       'callback_data' => "admin_stats"],
-         ['text' => "💰 Narxlar",          'callback_data' => "admin_prices"]],
-        [['text' => "📝 Loglar",           'callback_data' => "admin_logs"],
-         ['text' => "👥 Foydalanuvchilar", 'callback_data' => "admin_users"]],
-    ]], JSON_UNESCAPED_UNICODE);
-    editMessage($chat_id, $message_id, "<b>🔧 Admin Panel</b>", $kb);
-    exit;
+$admin_menu = json_encode(['inline_keyboard' => [
+[['text' => "📊 Statistika", 'callback_data' => "admin_stats"], ['text' => "💰 Narxlarni o'zgartirish", 'callback_data' => "admin_prices"]],
+[['text' => "📝 Loglar", 'callback_data' => "admin_logs"], ['text' => "⚙️ Sozlamalar", 'callback_data' => "admin_settings"]],
+[['text' => "👥 Foydalanuvchilar", 'callback_data' => "admin_users"]]
+]], JSON_UNESCAPED_UNICODE);
+sendMessage($chat_id, "<b>🔧 Admin Panel</b>\n\nKerakli bo'limni tanlang:", $admin_menu);
+exit;
 }
 
 if ($callback_data === "admin_stats" && $from_id == $admin) {
-    $s = mysqli_fetch_assoc(mysqli_query($connect,
-        "SELECT (SELECT COUNT(*) FROM users) tu,
-                (SELECT COUNT(*) FROM review WHERE status='completed') co,
-                (SELECT COUNT(*) FROM premium_orders WHERE status='completed') cp,
-                (SELECT IFNULL(SUM(price),0) FROM review WHERE status='completed') rs,
-                (SELECT IFNULL(SUM(price),0) FROM premium_orders WHERE status='completed') ps"));
-    $rev = $s['rs'] + $s['ps'];
-    editMessage($chat_id, $message_id,
-        "<b>📊 Statistika</b>\n\n👥 Foydalanuvchilar: <b>{$s['tu']}</b>\n⭐ Stars buyurtmalar: <b>{$s['co']}</b>\n👑 Premium buyurtmalar: <b>{$s['cp']}</b>\n💰 Jami daromad: <b>" . number_format($rev) . " so'm</b>",
-        $admin_back_kb);
-    exit;
+$stats_query = "SELECT 
+(SELECT COUNT(*) FROM users) as total_users,
+(SELECT COUNT(*) FROM review WHERE status = 'completed') as completed_orders,
+(SELECT COUNT(*) FROM premium_orders WHERE status = 'completed') as completed_premium,
+(SELECT SUM(price) FROM review WHERE status = 'completed') as total_revenue_stars,
+(SELECT SUM(price) FROM premium_orders WHERE status = 'completed') as total_revenue_premium";
+    
+$stats_result = mysqli_query($connect, $stats_query);
+$stats = mysqli_fetch_assoc($stats_result);   
+$total_revenue = ($stats['total_revenue_stars'] ?? 0) + ($stats['total_revenue_premium'] ?? 0);
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]
+]], JSON_UNESCAPED_UNICODE);   
+editMessage($chat_id, $message_id, "<b>📊 Statistika</b>\n\n👥 <b>Jami foydalanuvchilar:</b> " . ($stats['total_users'] ?? 0) . "\n⭐ <b>Bajarilgan Stars buyurtmalar:</b> " . ($stats['completed_orders'] ?? 0) . "\n👑 <b>Bajarilgan Premium buyurtmalar:</b> " . ($stats['completed_premium'] ?? 0) . "\n💰 <b>Jami daromad:</b> " . number_format($total_revenue) . " so'm", $reply);
+exit;
 }
 
 if ($callback_data === "admin_prices" && $from_id == $admin) {
-    $c = cfg($connect);
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "⭐ Stars: {$c['star_price']} so'm",        'callback_data' => "ep_star"]],
-        [['text' => "👑 1 oy: {$c['premium_1_month']} so'm",   'callback_data' => "ep_1"]],
-        [['text' => "👑 3 oy: {$c['premium_3_month']} so'm",   'callback_data' => "ep_3"]],
-        [['text' => "👑 6 oy: {$c['premium_6_month']} so'm",   'callback_data' => "ep_6"]],
-        [['text' => "👑 12 oy: {$c['premium_12_month']} so'm", 'callback_data' => "ep_12"]],
-        [['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]],
-    ]], JSON_UNESCAPED_UNICODE);
-    editMessage($chat_id, $message_id, "<b>💰 Narxlarni o'zgartirish</b>\n\nO'zgartirish uchun tanlang:", $kb);
-    exit;
+$settings = settings($connect);
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "⭐ Stars narxi: {$settings['star_price']} so'm", 'callback_data' => "edit_star_price"]],
+[['text' => "👑 1 oy: {$settings['premium_1_month']} so'm", 'callback_data' => "edit_premium_1"]],
+[['text' => "👑 3 oy: {$settings['premium_3_month']} so'm", 'callback_data' => "edit_premium_3"]],
+[['text' => "👑 6 oy: {$settings['premium_6_month']} so'm", 'callback_data' => "edit_premium_6"]],
+[['text' => "👑 12 oy: {$settings['premium_12_month']} so'm", 'callback_data' => "edit_premium_12"]],
+[['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]
+]], JSON_UNESCAPED_UNICODE);
+editMessage($chat_id, $message_id, "<b>💰 Narxlarni o'zgartirish</b>\n\nO'zgartirmoqchi bo'lgan narxni tanlang:", $reply);
+exit;
 }
 
 if ($callback_data === "admin_logs" && $from_id == $admin) {
-    $txt = "<b>📝 So'nggi buyurtmalar</b>\n\n<b>⭐ Stars:</b>\n";
-    $rs  = mysqli_query($connect, "SELECT * FROM review ORDER BY date DESC LIMIT 10");
-    while ($r = mysqli_fetch_assoc($rs)) $txt .= "• {$r['quantity']}⭐ — {$r['username']} — {$r['status']} — " . date('d.m.Y H:i', strtotime($r['date'])) . "\n";
-    $txt .= "\n<b>👑 Premium:</b>\n";
-    $rp  = mysqli_query($connect, "SELECT * FROM premium_orders ORDER BY date DESC LIMIT 10");
-    while ($r = mysqli_fetch_assoc($rp)) $txt .= "• {$r['quantity']}oy — {$r['username']} — {$r['status']} — " . date('d.m.Y H:i', strtotime($r['date'])) . "\n";
-    editMessage($chat_id, $message_id, $txt, $admin_back_kb);
-    exit;
+$recent_orders = mysqli_query($connect, "SELECT * FROM review ORDER BY date DESC LIMIT 10");
+$recent_premium = mysqli_query($connect, "SELECT * FROM premium_orders ORDER BY date DESC LIMIT 10");   
+$log_text = "<b>📝 So'nggi buyurtmalar</b>\n\n";
+$log_text .= "<b>⭐ Stars buyurtmalar:</b>\n";
+while ($order = mysqli_fetch_assoc($recent_orders)) {
+$log_text .= "• {$order['quantity']} stars - {$order['username']} - {$order['status']} - " . date('d.m.Y H:i', strtotime($order['date'])) . "\n";
+}
+    
+$log_text .= "\n<b>👑 Premium buyurtmalar:</b>\n";
+while ($order = mysqli_fetch_assoc($recent_premium)) {
+$log_text .= "• {$order['quantity']} oy - {$order['username']} - {$order['status']} - " . date('d.m.Y H:i', strtotime($order['date'])) . "\n";
+}
+    
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]
+]], JSON_UNESCAPED_UNICODE);
+editMessage($chat_id, $message_id, $log_text, $reply);
+exit;
 }
 
 if ($callback_data === "admin_users" && $from_id == $admin) {
-    $cnt = mysqli_fetch_assoc(mysqli_query($connect, "SELECT COUNT(*) c FROM users"))['c'];
-    $txt = "<b>👥 Foydalanuvchilar: {$cnt}</b>\n\nSo'nggi:\n";
-    $ru  = mysqli_query($connect, "SELECT user_id, date FROM users ORDER BY date DESC LIMIT 10");
-    while ($r = mysqli_fetch_assoc($ru)) $txt .= "• {$r['user_id']} — " . date('d.m.Y H:i', strtotime($r['date'])) . "\n";
-    editMessage($chat_id, $message_id, $txt, $admin_back_kb);
-    exit;
+$users_query = "SELECT COUNT(*) as total FROM users";
+$users_result = mysqli_query($connect, $users_query);
+$users_count = mysqli_fetch_assoc($users_result)['total'];  
+$recent_users = mysqli_query($connect, "SELECT user_id, date FROM users ORDER BY date DESC LIMIT 10");
+$users_text = "<b>👥 Foydalanuvchilar</b>\n\n";
+$users_text .= "<b>Jami foydalanuvchilar:</b> {$users_count}\n\n";
+$users_text .= "<b>So'nggi ro'yxatdan o'tganlar:</b>\n";  
+while ($user = mysqli_fetch_assoc($recent_users)) {
+$users_text .= "• ID: {$user['user_id']} - " . date('d.m.Y H:i', strtotime($user['date'])) . "\n";
+}
+    
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]
+]], JSON_UNESCAPED_UNICODE);
+editMessage($chat_id, $message_id, $users_text, $reply);
+exit;
 }
 
-// Price edit triggers
-$ep_map = ['ep_star' => 'star_price', 'ep_1' => 'premium_1_month', 'ep_3' => 'premium_3_month', 'ep_6' => 'premium_6_month', 'ep_12' => 'premium_12_month'];
-$ep_lbl = ['ep_star' => '⭐ Stars narxi', 'ep_1' => '👑 1 oy narxi', 'ep_3' => '👑 3 oy narxi', 'ep_6' => '👑 6 oy narxi', 'ep_12' => '👑 12 oy narxi'];
-if ($callback_data && isset($ep_map[$callback_data]) && $from_id == $admin) {
-    save_step($chat_id, ['step' => 'edit_price', 'field' => $ep_map[$callback_data], 'label' => $ep_lbl[$callback_data]]);
-    sendMessage($chat_id, "{$ep_lbl[$callback_data]} uchun yangi miqdor kiriting (so'm):");
-    exit;
+if ($callback_data === "admin_back" && $from_id == $admin) {
+$admin_menu = json_encode(['inline_keyboard' => [
+[['text' => "📊 Statistika", 'callback_data' => "admin_stats"], ['text' => "💰 Narxlarni o'zgartirish", 'callback_data' => "admin_prices"]],
+[['text' => "📝 Loglar", 'callback_data' => "admin_logs"], ['text' => "⚙️ Sozlamalar", 'callback_data' => "admin_settings"]],
+[['text' => "👥 Foydalanuvchilar", 'callback_data' => "admin_users"]]
+]], JSON_UNESCAPED_UNICODE);
+editMessage($chat_id, $message_id, "<b>🔧 Admin Panel</b>\n\nKerakli bo'limni tanlang:", $admin_menu);
+exit;
 }
 
-// ─── Stars menu ──────────────────────────────────────────────────────────────
-if ($callback_data === "stars") {
-    deleteMessage($chat_id, $message_id);
-    $sp = cfg($connect)['star_price'];
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "50 ⭐",   'callback_data' => "buy_stars_50"],
-         ['text' => "100 ⭐",  'callback_data' => "buy_stars_100"]],
-        [['text' => "500 ⭐",  'callback_data' => "buy_stars_500"],
-         ['text' => "1000 ⭐", 'callback_data' => "buy_stars_1000"]],
-        [['text' => "🔙 Orqaga", 'callback_data' => "menu"]],
-    ]], JSON_UNESCAPED_UNICODE);
-    sendMessage($chat_id, "<b>⭐️ Stars sotib olish\n\n50 dan 5000 gacha kiriting yoki tanlang:\n(1 star = {$sp} so'm)</b>", $kb);
-    save_step($chat_id, ['step' => 'stars_amount']);
-    exit;
+if ($callback_data === "edit_star_price" && $from_id == $admin) {
+save_step($chat_id, ['step' => 'edit_star_price']);
+sendMessage($chat_id, "⭐ Stars narxini kiriting (so'm):");
+exit;
 }
 
-// ─── Premium menu ────────────────────────────────────────────────────────────
+if ($callback_data === "edit_premium_1" && $from_id == $admin) {
+save_step($chat_id, ['step' => 'edit_premium_1']);
+sendMessage($chat_id, "👑 Premium 1 oy narxini kiriting (so'm):");
+exit;
+}
+
+if ($callback_data === "edit_premium_3" && $from_id == $admin) {
+save_step($chat_id, ['step' => 'edit_premium_3']);
+sendMessage($chat_id, "👑 Premium 3 oy narxini kiriting (so'm):");
+exit;
+}
+
+if ($callback_data === "edit_premium_6" && $from_id == $admin) {
+save_step($chat_id, ['step' => 'edit_premium_6']);
+sendMessage($chat_id, "👑 Premium 6 oy narxini kiriting (so'm):");
+exit;
+}
+
+if ($callback_data === "edit_premium_12" && $from_id == $admin) {
+save_step($chat_id, ['step' => 'edit_premium_12']);
+sendMessage($chat_id, "👑 Premium 12 oy narxini kiriting (so'm):");
+exit;
+}
+
 if ($callback_data === "premium") {
-    deleteMessage($chat_id, $message_id);
-    $c  = cfg($connect);
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "1 oy 👑 — {$c['premium_1_month']} so'm",  'callback_data' => "buy_prem_1"],
-         ['text' => "3 oy 👑 — {$c['premium_3_month']} so'm",  'callback_data' => "buy_prem_3"]],
-        [['text' => "6 oy 👑 — {$c['premium_6_month']} so'm",  'callback_data' => "buy_prem_6"],
-         ['text' => "12 oy 👑 — {$c['premium_12_month']} so'm",'callback_data' => "buy_prem_12"]],
-        [['text' => "🔙 Orqaga", 'callback_data' => "menu"]],
-    ]], JSON_UNESCAPED_UNICODE);
-    sendMessage($chat_id, "<b>👑 Premium obuna\n\nMuddatni tanlang:</b>", $kb);
-    exit;
+deleteMessage($chat_id, $message_id);
+$settings = settings($connect);
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "1 oy 👑 - {$settings['premium_1_month']} so'm", 'callback_data' => "premium_1"], ['text' => "3 oy 👑 - {$settings['premium_3_month']} so'm", 'callback_data' => "premium_3"]],
+[['text' => "6 oy 👑 - {$settings['premium_6_month']} so'm", 'callback_data' => "premium_6"], ['text' => "12 oy 👑 - {$settings['premium_12_month']} so'm", 'callback_data' => "premium_12"]],
+[['text' => "🔙 Orqaga", 'callback_data' => "menu"]]
+]], JSON_UNESCAPED_UNICODE);
+sendMessage($chat_id, "<b>👑 Premium obuna\n\n📅 Obuna muddatini tanlang:</b>", $reply);
+save_step($chat_id, ['step' => 'premium_amount']);
+exit;
 }
 
-// ─── menu back ───────────────────────────────────────────────────────────────
 if ($callback_data === "menu") {
-    deleteMessage($chat_id, $message_id);
-    sendAnimation($chat_id, "https://t.me/PhotosForBots/146",
-        "🎉 <b>Uz Give</b>ga xush kelibsiz!\n\n🎯 <b>Nima olasiz, tanlang:</b>", $menu);
-    clear_step($chat_id);
-    exit;
+deleteMessage($chat_id, $message_id);
+sendAnimation($chat_id, "https://t.me/PhotosForBots/146", "🎉 <b>Fast Give</b>ga xush kelibsiz!\n\n🎯 <b>Nima olasiz, tanlang:</b>", $menu, "HTML");
+clear_step($chat_id);
+exit;
 }
 
-// ─── Stars quantity buttons ──────────────────────────────────────────────────
-if ($callback_data && strpos($callback_data, "buy_stars_") === 0) {
-    deleteMessage($chat_id, $message_id);
-    $stars = intval(str_replace("buy_stars_", "", $callback_data));
-    $price = $stars * cfg($connect)['star_price'];
-    save_step($chat_id, ['step' => 'stars_user', 'stars' => $stars]);
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "👤 O'zimga", 'callback_data' => "self_stars"],
-         ['text' => "🔙 Orqaga", 'callback_data' => "stars"]],
-    ]], JSON_UNESCAPED_UNICODE);
-    sendMessage($chat_id, "<b>⭐️ Buyurtma\n└ Miqdor: {$stars} ⭐️\n└ Narxi: {$price} so'm\n\n👤 Kimga?\n📝 @username kiriting:</b>", $kb);
-    exit;
+if ($callback_data === "stars") {
+deleteMessage($chat_id, $message_id);
+$star_price = settings($connect)['star_price'];
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "50 ⭐", 'callback_data' => "stars_50"], ['text' => "100 ⭐", 'callback_data' => "stars_100"]],
+[['text' => "500 ⭐", 'callback_data' => "stars_500"], ['text' => "1000 ⭐", 'callback_data' => "stars_1000"]],
+[['text' => "🔙 Orqaga", 'callback_data' => "menu"]]
+]], JSON_UNESCAPED_UNICODE);
+sendMessage($chat_id, "<b>❓ Nechta star sotib olmoqchisiz (50-5000) kiriting yoki tanlang:\n\n(1 star = {$star_price} so'm)</b>", $reply);
+save_step($chat_id, ['step' => 'stars_amount']);
+exit;
 }
 
-// ─── Premium quantity buttons ─────────────────────────────────────────────────
-if ($callback_data && strpos($callback_data, "buy_prem_") === 0) {
-    deleteMessage($chat_id, $message_id);
-    $months = intval(str_replace("buy_prem_", "", $callback_data));
-    $c      = cfg($connect);
-    $price  = $c["premium_{$months}_month"];
-    save_step($chat_id, ['step' => 'premium_user', 'months' => $months, 'price' => $price]);
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "👤 O'zimga", 'callback_data' => "self_premium"],
-         ['text' => "🔙 Orqaga", 'callback_data' => "premium"]],
-    ]], JSON_UNESCAPED_UNICODE);
-    sendMessage($chat_id, "<b>👑 Buyurtma\n└ Muddat: {$months} oy\n└ Narxi: {$price} so'm\n\n👤 Kimga?\n📝 @username kiriting:</b>", $kb);
-    exit;
+if ($callback_data && strpos($callback_data, "stars_") === 0) {
+deleteMessage($chat_id, $message_id);
+$parts = explode("_", $callback_data);
+$stars = intval($parts[1]);
+$star_price = settings($connect)['star_price'];
+$price = $stars * $star_price;
+save_step($chat_id, ['step' => 'stars_user', 'stars' => $stars]);
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "👤 O'zimga", 'callback_data' => "self_user"], ['text' => "🔙 Orqaga", 'callback_data' => "stars"]]
+]], JSON_UNESCAPED_UNICODE);
+sendMessage($chat_id, "<b>⭐️ Stars sotib olish\n📊 Buyurtma ma'lumotlari:\n└ 🎯 Miqdor: {$stars} ⭐️\n└ 💰 Narxi: {$price} so'm\n\n👤 Kimga yuboramiz?\n📝 @username kiriting:</b>", $reply);
+exit;
 }
 
-// ─── Self shortcuts ───────────────────────────────────────────────────────────
-if ($callback_data === "self_stars") {
-    if (!$username) { answerCallback($callback_id, "❗ Sizda username yo'q! Telegram sozlamalaridan qo'shing.", true); exit; }
-    $st = load_step($chat_id);
-    if (empty($st['stars'])) { answerCallback($callback_id, "⚠️ Buyurtma topilmadi.", true); exit; }
-    $st['receiver'] = '@' . $username;
-    save_step($chat_id, $st);
-    make_stars_payment($chat_id, $connect, $CC);
-    exit;
+if ($callback_data && strpos($callback_data, "premium_") === 0) {
+deleteMessage($chat_id, $message_id);
+$parts = explode("_", $callback_data);
+$months = intval($parts[1]);
+$settings = settings($connect);
+$price = $settings["premium_{$months}_month"];
+save_step($chat_id, ['step' => 'premium_user', 'months' => $months, 'price' => $price]);
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "👤 O'zimga", 'callback_data' => "self_premium"], ['text' => "🔙 Orqaga", 'callback_data' => "premium"]]
+]], JSON_UNESCAPED_UNICODE);
+sendMessage($chat_id, "<b>👑 Premium obuna\n📊 Buyurtma ma'lumotlari:\n└ 🎯 Muddat: {$months} oy\n└ 💰 Narxi: {$price} so'm\n\n👤 Kimga yuboramiz?\n📝 @username kiriting:</b>", $reply);
+exit;
+}
+
+if ($callback_data === "self_user") {
+$caller = $callback['from'] ?? null;
+$caller_username = $caller['username'] ?? null;
+if (!$caller_username) {
+answerCallback($callback_id, "❗ Sizda username yo'q! Iltimos, Telegram sozlamalaridan username qo'shing.", true);
+exit;
+}
+$st = load_step($chat_id);
+if (empty($st['stars'])) {
+answerCallback($callback_id, "⚠️ Buyurtma topilmadi. Iltimos, avval miqdorni tanlang.", true);
+exit;
+}
+$st['receiver'] = '@' . $caller_username;
+save_step($chat_id, $st);
+process_order($chat_id, $connect, $card_number); 
+exit;
 }
 
 if ($callback_data === "self_premium") {
-    if (!$username) { answerCallback($callback_id, "❗ Sizda username yo'q! Telegram sozlamalaridan qo'shing.", true); exit; }
-    $st = load_step($chat_id);
-    if (empty($st['months'])) { answerCallback($callback_id, "⚠️ Buyurtma topilmadi.", true); exit; }
-    $st['receiver'] = '@' . $username;
-    save_step($chat_id, $st);
-    make_premium_payment($chat_id, $connect, $CC);
-    exit;
+$caller = $callback['from'] ?? null;
+$caller_username = $caller['username'] ?? null;
+if (!$caller_username) {
+answerCallback($callback_id, "❗ Sizda username yo'q! Iltimos, Telegram sozlamalaridan username qo'shing.", true);
+exit;
+}
+$st = load_step($chat_id);
+if (empty($st['months'])) {
+answerCallback($callback_id, "⚠️ Buyurtma topilmadi. Iltimos, avval muddatni tanlang.", true);
+exit;
+}
+$st['receiver'] = '@' . $caller_username;
+save_step($chat_id, $st);
+process_premium_order($chat_id, $connect, $card_number); 
+exit;
 }
 
-// ─── Cancel pay ───────────────────────────────────────────────────────────────
-if ($callback_data && strpos($callback_data, "cancel_stars=") === 0) {
-    $order_code = substr($callback_data, strlen("cancel_stars="));
-    $st = mysqli_prepare($connect, "SELECT * FROM review WHERE order_id=? AND status='unpaid' LIMIT 1");
-    mysqli_stmt_bind_param($st, 's', $order_code); mysqli_stmt_execute($st);
-    $row = mysqli_fetch_assoc(mysqli_stmt_get_result($st)); mysqli_stmt_close($st);
-    if (!$row) { answerCallback($callback_id, "❌ To'lov topilmadi yoki allaqachon o'zgargan!", true); exit; }
-    $upd = mysqli_prepare($connect, "UPDATE review SET status='cancel' WHERE order_id=? LIMIT 1");
-    mysqli_stmt_bind_param($upd, 's', $order_code); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
-    $CC->cancel($order_code);
-    deleteMessage($chat_id, $message_id);
-    sendMessage($row['user_id'], "❌ <b>{$row['price']} so'mlik to'lov bekor qilindi.</b>\n⭐ Stars: {$row['quantity']}\n👤 {$row['username']}");
-    answerCallback($callback_id, "Bekor qilindi.", true);
-    exit;
-}
-
-if ($callback_data && strpos($callback_data, "cancel_prem=") === 0) {
-    $order_code = substr($callback_data, strlen("cancel_prem="));
-    $st = mysqli_prepare($connect, "SELECT * FROM premium_orders WHERE order_id=? AND status='unpaid' LIMIT 1");
-    mysqli_stmt_bind_param($st, 's', $order_code); mysqli_stmt_execute($st);
-    $row = mysqli_fetch_assoc(mysqli_stmt_get_result($st)); mysqli_stmt_close($st);
-    if (!$row) { answerCallback($callback_id, "❌ To'lov topilmadi yoki allaqachon o'zgargan!", true); exit; }
-    $upd = mysqli_prepare($connect, "UPDATE premium_orders SET status='cancel' WHERE order_id=? LIMIT 1");
-    mysqli_stmt_bind_param($upd, 's', $order_code); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
-    $CC->cancel($order_code);
-    deleteMessage($chat_id, $message_id);
-    sendMessage($row['user_id'], "❌ <b>{$row['price']} so'mlik to'lov bekor qilindi.</b>\n👑 Premium: {$row['quantity']} oy\n👤 {$row['username']}");
-    answerCallback($callback_id, "Bekor qilindi.", true);
-    exit;
-}
-
-// ─── Check payment ────────────────────────────────────────────────────────────
-if ($callback_data && strpos($callback_data, "check_stars=") === 0) {
-    $order_code = substr($callback_data, strlen("check_stars="));
-
-    $st = mysqli_prepare($connect, "SELECT * FROM review WHERE order_id=? AND payment_method='checkcard' LIMIT 1");
-    mysqli_stmt_bind_param($st, 's', $order_code); mysqli_stmt_execute($st);
-    $row = mysqli_fetch_assoc(mysqli_stmt_get_result($st)); mysqli_stmt_close($st);
-
-    $raw    = $CC->check($order_code);
-    $result = $raw ? json_decode($raw, true) : null;
-    if (!$result || ($result['status'] ?? '') !== 'success') { answerCallback($callback_id, "❌ API xatolik berdi!", true); exit; }
-
-    $order_data = $result['data'] ?? [];
-    $summa      = (int)($order_data['amount'] ?? 0);
-    $status     = $order_data['status'] ?? '';
-
-    if ($status === "paid") {
-        $uid    = $row['user_id'] ?? $from_id;
-        $qty    = intval($row['quantity'] ?? 0);
-        $rcv    = $row['username'] ?? 'N/A';
-        $prc    = $row['price'] ?? $summa;
-        $rid    = $row['id'] ?? null;
-        $logs   = cfg($connect)['logs'];
-
-        // Mark paid
-        $upd = mysqli_prepare($connect, "UPDATE review SET status='paid' WHERE id=? LIMIT 1");
-        mysqli_stmt_bind_param($upd, 'i', $rid); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
-
-        @deleteMessage($chat_id, $message_id);
-        sendMessage($from_id, "<b>✅ To'lov qabul qilindi.\n💰 {$summa} so'm\n📦 Buyurtma bajarilmoqda...</b>");
-
-        // Deliver stars via API
-        $api_url   = "https://domen.uz/stars.php?username=" . urlencode($rcv) . "&starssoni=" . urlencode($qty);
-        $ch_curl   = curl_init($api_url);
-        curl_setopt($ch_curl, CURLOPT_RETURNTRANSFER, true);
-        $api_resp  = curl_exec($ch_curl);
-        $http_code = curl_getinfo($ch_curl, CURLINFO_HTTP_CODE);
-        curl_close($ch_curl);
-        $delivered = ($api_resp !== false && $http_code >= 200 && $http_code < 300);
-
-        if ($delivered) {
-            $upd2 = mysqli_prepare($connect, "UPDATE review SET status='completed' WHERE id=? LIMIT 1");
-            mysqli_stmt_bind_param($upd2, 'i', $rid); mysqli_stmt_execute($upd2); mysqli_stmt_close($upd2);
-            sendMessage($from_id, "<b>⭐️ {$qty} stars muvaffaqiyatli yuborildi: {$rcv}\n🎉 Rahmat!</b>");
-        } else {
-            $upd3 = mysqli_prepare($connect, "UPDATE review SET status='failed_delivery' WHERE id=? LIMIT 1");
-            mysqli_stmt_bind_param($upd3, 'i', $rid); mysqli_stmt_execute($upd3); mysqli_stmt_close($upd3);
-            sendMessage($from_id, "<b>⚠️ To'lov qabul qilindi, ammo stars yetkazishda muammo. Admin bilan bog'laning.</b>");
-            $err = "<b>⚠️ Stars delivery FAIL\nOrder: {$order_code}\nUser: {$uid}\n{$rcv} → {$qty}⭐\nHTTP: {$http_code}</b>";
-            sendMessage($logs, $err); sendMessage($admin, $err);
-        }
-
-        $log = "<b>✅ Stars buyurtma (CheckCard)\nOrder: {$order_code}\nUser: {$uid}\n{$rcv} → {$qty}⭐\nNarx: {$prc} so'm</b>";
-        sendMessage($logs, $log); sendMessage(CHANNEL_TO_JOIN, $log);
-        answerCallback($callback_id, "✅ To'lov qabul qilindi!", true);
-
-    } elseif ($status === "cancel") {
-        if ($row) {
-            $upd = mysqli_prepare($connect, "UPDATE review SET status='cancel' WHERE order_id=? LIMIT 1");
-            mysqli_stmt_bind_param($upd, 's', $order_code); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
-        }
-        deleteMessage($chat_id, $message_id);
-        sendMessage($from_id, "❌ <b>{$summa} so'mlik to'lov bekor qilingan.</b>");
-        answerCallback($callback_id, "Bekor qilingan.", true);
-    } elseif ($status === "pending") {
-        answerCallback($callback_id, "⏳ To'lov hali amalga oshirilmagan.", true);
-    } else {
-        answerCallback($callback_id, "⚠️ Holat: $status", true);
-    }
-    exit;
-}
-
-if ($callback_data && strpos($callback_data, "check_prem=") === 0) {
-    $order_code = substr($callback_data, strlen("check_prem="));
-
-    $st = mysqli_prepare($connect, "SELECT * FROM premium_orders WHERE order_id=? AND payment_method='checkcard' LIMIT 1");
-    mysqli_stmt_bind_param($st, 's', $order_code); mysqli_stmt_execute($st);
-    $row = mysqli_fetch_assoc(mysqli_stmt_get_result($st)); mysqli_stmt_close($st);
-
-    $raw    = $CC->check($order_code);
-    $result = $raw ? json_decode($raw, true) : null;
-    if (!$result || ($result['status'] ?? '') !== 'success') { answerCallback($callback_id, "❌ API xatolik berdi!", true); exit; }
-
-    $order_data = $result['data'] ?? [];
-    $summa      = (int)($order_data['amount'] ?? 0);
-    $status     = $order_data['status'] ?? '';
-
-    if ($status === "paid") {
-        $uid  = $row['user_id'] ?? $from_id;
-        $qty  = intval($row['quantity'] ?? 0);
-        $rcv  = $row['username'] ?? 'N/A';
-        $prc  = $row['price'] ?? $summa;
-        $rid  = $row['id'] ?? null;
-        $logs = cfg($connect)['logs'];
-
-        $upd = mysqli_prepare($connect, "UPDATE premium_orders SET status='paid' WHERE id=? LIMIT 1");
-        mysqli_stmt_bind_param($upd, 'i', $rid); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
-
-        @deleteMessage($chat_id, $message_id);
-        sendMessage($from_id, "<b>✅ To'lov qabul qilindi.\n💰 {$summa} so'm\n📦 Buyurtma bajarilmoqda...</b>");
-
-        $api_url   = "https://domen.uz/premium.php?username=" . urlencode($rcv) . "&premiumoyi=" . urlencode($qty);
-        $ch_curl   = curl_init($api_url);
-        curl_setopt($ch_curl, CURLOPT_RETURNTRANSFER, true);
-        $api_resp  = curl_exec($ch_curl);
-        $http_code = curl_getinfo($ch_curl, CURLINFO_HTTP_CODE);
-        curl_close($ch_curl);
-        $delivered = ($api_resp !== false && $http_code >= 200 && $http_code < 300);
-
-        if ($delivered) {
-            $upd2 = mysqli_prepare($connect, "UPDATE premium_orders SET status='completed' WHERE id=? LIMIT 1");
-            mysqli_stmt_bind_param($upd2, 'i', $rid); mysqli_stmt_execute($upd2); mysqli_stmt_close($upd2);
-            sendMessage($from_id, "<b>👑 {$qty} oylik Premium muvaffaqiyatli yuborildi: {$rcv}\n🎉 Rahmat!</b>");
-        } else {
-            $upd3 = mysqli_prepare($connect, "UPDATE premium_orders SET status='failed_delivery' WHERE id=? LIMIT 1");
-            mysqli_stmt_bind_param($upd3, 'i', $rid); mysqli_stmt_execute($upd3); mysqli_stmt_close($upd3);
-            sendMessage($from_id, "<b>⚠️ To'lov qabul qilindi, ammo Premium yetkazishda muammo. Admin bilan bog'laning.</b>");
-            $err = "<b>⚠️ Premium delivery FAIL\nOrder: {$order_code}\nUser: {$uid}\n{$rcv} → {$qty}oy\nHTTP: {$http_code}</b>";
-            sendMessage($logs, $err); sendMessage($admin, $err);
-        }
-
-        $log = "<b>✅ Premium buyurtma (CheckCard)\nOrder: {$order_code}\nUser: {$uid}\n{$rcv} → {$qty} oy\nNarx: {$prc} so'm</b>";
-        sendMessage($logs, $log); sendMessage(CHANNEL_TO_JOIN, $log);
-        answerCallback($callback_id, "✅ To'lov qabul qilindi!", true);
-
-    } elseif ($status === "cancel") {
-        if ($row) {
-            $upd = mysqli_prepare($connect, "UPDATE premium_orders SET status='cancel' WHERE order_id=? LIMIT 1");
-            mysqli_stmt_bind_param($upd, 's', $order_code); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
-        }
-        deleteMessage($chat_id, $message_id);
-        sendMessage($from_id, "❌ <b>{$summa} so'mlik to'lov bekor qilingan.</b>");
-        answerCallback($callback_id, "Bekor qilingan.", true);
-    } elseif ($status === "pending") {
-        answerCallback($callback_id, "⏳ To'lov hali amalga oshirilmagan.", true);
-    } else {
-        answerCallback($callback_id, "⚠️ Holat: $status", true);
-    }
-    exit;
-}
-
-// ─── Text input handler ────────────────────────────────────────────────────
 if ($text !== null) {
-    $st = load_step($chat_id);
-
-    // Admin price edit
-    if ($from_id == $admin && !empty($st['step']) && $st['step'] === 'edit_price') {
-        if (is_numeric($text) && $text > 0) {
-            $field = $st['field'];
-            $label = $st['label'];
-            $upd   = mysqli_prepare($connect, "UPDATE settings SET `{$field}` = ? WHERE id=1");
-            mysqli_stmt_bind_param($upd, 'i', $text);
-            mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
-            sendMessage($chat_id, "✅ {$label} <b>{$text} so'm</b> ga o'zgartirildi!");
-            clear_step($chat_id);
-        } else {
-            sendMessage($chat_id, "⚠️ Iltimos to'g'ri musbat son kiriting.");
-        }
-        exit;
-    }
-
-    // Stars amount input
-    if (!empty($st['step']) && $st['step'] === 'stars_amount') {
-        if (!is_numeric($text)) { sendMessage($chat_id, "⚠️ Faqat son kiriting (50-5000)."); exit; }
-        $qty = intval($text);
-        if ($qty < 50 || $qty > 5000) { sendMessage($chat_id, "⚠️ 50 dan 5000 oralig'ida kiriting."); exit; }
-        $price = $qty * cfg($connect)['star_price'];
-        save_step($chat_id, ['step' => 'stars_user', 'stars' => $qty]);
-        $kb = json_encode(['inline_keyboard' => [
-            [['text' => "👤 O'zimga", 'callback_data' => "self_stars"],
-             ['text' => "🔙 Orqaga", 'callback_data' => "stars"]],
-        ]], JSON_UNESCAPED_UNICODE);
-        sendMessage($chat_id, "<b>⭐️ Buyurtma\n└ Miqdor: {$qty} ⭐️\n└ Narxi: {$price} so'm\n\n👤 Kimga?\n📝 @username kiriting:</b>", $kb);
-        exit;
-    }
-
-    // Stars username input
-    if (!empty($st['step']) && $st['step'] === 'stars_user') {
-        $uname = parse_username($text);
-        if (!$uname) { sendMessage($chat_id, "⚠️ Username noto'g'ri. Masalan: @username"); exit; }
-        $st['receiver'] = $uname;
-        save_step($chat_id, $st);
-        make_stars_payment($chat_id, $connect, $CC);
-        exit;
-    }
-
-    // Premium username input
-    if (!empty($st['step']) && $st['step'] === 'premium_user') {
-        $uname = parse_username($text);
-        if (!$uname) { sendMessage($chat_id, "⚠️ Username noto'g'ri. Masalan: @username"); exit; }
-        $st['receiver'] = $uname;
-        save_step($chat_id, $st);
-        make_premium_payment($chat_id, $connect, $CC);
-        exit;
-    }
+$st = load_step($chat_id);
+if (!empty($st['step']) && $st['step'] === 'stars_amount') {
+if (is_numeric($text)) {
+$requested = intval($text);
+if ($requested < 50 || $requested > 5000) {
+sendMessage($chat_id, "⚠️ Noto'g'ri miqdor! 50 dan 5000 gacha kiriting.");
+exit;
+}
+$star_price = settings($connect)['star_price'];
+$price = $requested * $star_price;
+save_step($chat_id, ['step' => 'stars_user', 'stars' => $requested]);
+$reply = json_encode(['inline_keyboard' => [
+[['text' => "👤 O'zimga", 'callback_data' => "self_user"], ['text' => "🔙 Orqaga", 'callback_data' => "stars"]]
+]], JSON_UNESCAPED_UNICODE);
+sendMessage($chat_id, "<b>⭐️ Stars sotib olish\n📊 Buyurtma ma'lumotlari:\n└ 🎯 Miqdor: {$requested} ⭐️\n└ 💰 Narxi: <u>{$price}</u> so'm\n\n👤 Kimga yuboramiz?\n📝 @username kiriting:</b>", $reply);
+} else {
+sendMessage($chat_id, "⚠️ Iltimos faqat son kiriting: 50 dan 5000 gacha.");
+}
+exit;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function parse_username($input) {
-    $input = trim($input);
-    if (preg_match('/@([A-Za-z0-9_]{3,32})/', $input, $m))    return '@' . $m[1];
-    if (preg_match('/^[A-Za-z0-9_]{3,32}$/', $input))         return '@' . $input;
-    if (preg_match('~t\.me/([A-Za-z0-9_]{3,32})~', $input, $m)) return '@' . $m[1];
-    return null;
+if (!empty($st['step']) && $st['step'] === 'stars_user') {
+$input = trim($text);
+$username_final = null;
+if (preg_match('/@([A-Za-z0-9_]{3,32})/u', $input, $m)) {
+$username_final = '@' . $m[1];
+} elseif (preg_match('/^[A-Za-z0-9_]{3,32}$/u', $input)) {
+$username_final = '@' . $input;
+} elseif (preg_match('~t\.me/([A-Za-z0-9_]{3,32})~u', $input, $m2)) {
+$username_final = '@' . $m2[1];
 }
 
-function make_stars_payment($chat_id, $connect, $CC) {
-    global $stars_card;
-    $st = load_step($chat_id);
-    if (empty($st['stars']) || empty($st['receiver'])) {
-        sendMessage($chat_id, "⚠️ Buyurtma to'liq emas."); return;
-    }
-    $stars    = intval($st['stars']);
-    $receiver = $st['receiver'];
-    $base     = $stars * cfg($connect)['star_price'];
-    $amount   = $base + rand(1, 100);
+if (!$username_final) {
+sendMessage($chat_id, "⚠️ Username noto'g'ri formatda. Masalan: @username yoki username (faqat harflar/raqamlar/underscore).");
+exit;
+}
 
-    $raw  = $CC->create($amount);
-    $resp = $raw ? json_decode($raw, true) : null;
+$st['receiver'] = $username_final;
+save_step($chat_id, $st);
+process_order($chat_id, $connect, $card_number); 
+exit;
+}
 
-    if (!$resp) { sendMessage($chat_id, "⚠️ CheckCard API bilan bog'lanishda xatolik."); return; }
-    if (($resp['status'] ?? '') === 'error') {
-        $msg = $resp['message'] ?? 'Xatolik';
-        if ($msg === "There is a pending payment for this amount.") {
-            sendMessage($chat_id, "⚠️ Ushbu miqdorda hali yakunlanmagan to'lov mavjud.\n\n💡 Masalan: " . ($amount + 500) . " so'm kiriting.");
-        } else {
-            sendMessage($chat_id, "⚠️ $msg");
-        }
-        return;
-    }
+if (!empty($st['step']) && $st['step'] === 'premium_user') {
+$input = trim($text);
+$username_final = null;
 
-    $order_code = $resp['order'] ?? null;
-    $insert_id  = $resp['insert_id'] ?? $order_code;
-    if (!$order_code) { sendMessage($chat_id, "⚠️ API javobida order topilmadi."); return; }
+if (preg_match('/@([A-Za-z0-9_]{3,32})/u', $input, $m)) {
+$username_final = '@' . $m[1];
+} elseif (preg_match('/^[A-Za-z0-9_]{3,32}$/u', $input)) {
+$username_final = '@' . $input;
+} elseif (preg_match('~t\.me/([A-Za-z0-9_]{3,32})~u', $input, $m2)) {
+$username_final = '@' . $m2[1];
+}
 
-    $ins = mysqli_prepare($connect, "INSERT INTO review (user_id, order_id, price, status, quantity, username, payment_method) VALUES (?,?,?,'unpaid',?,?,'checkcard')");
-    $uid = intval($chat_id);
-    mysqli_stmt_bind_param($ins, 'isiis', $uid, $order_code, $amount, $stars, $receiver);
-    mysqli_stmt_execute($ins); mysqli_stmt_close($ins);
+if (!$username_final) {
+sendMessage($chat_id, "⚠️ Username noto'g'ri formatda. Masalan: @username yoki username (faqat harflar/raqamlar/underscore).");
+exit;
+}
 
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "♻️ To'lovni tekshirish", 'callback_data' => "check_stars={$order_code}"]],
-        [['text' => "❌ Bekor qilish",        'callback_data' => "cancel_stars={$order_code}"]],
-    ]], JSON_UNESCAPED_UNICODE);
+$st['receiver'] = $username_final;
+save_step($chat_id, $st);
+process_premium_order($chat_id, $connect, $card_number); 
+exit;
+}
 
-    sendMessage($chat_id, "<b>💳 To'lov ma'lumotlari
+if ($from_id == $admin) {
+$st = load_step($chat_id);
+if (!empty($st['step']) && $st['step'] === 'edit_star_price') {
+if (is_numeric($text) && $text > 0) {
+$stmt = mysqli_prepare($connect, "UPDATE settings SET star_price = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt, 'i', $text);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+sendMessage($chat_id, "✅ Stars narxi {$text} so'm ga o'zgartirildi!");
+clear_step($chat_id);
+} else {
+sendMessage($chat_id, "⚠️ Iltimos to'g'ri raqam kiriting!");
+}
+exit;
+}
 
-📋 Buyurtma #{$insert_id}
-└ ⭐ Stars: {$stars}
-└ 💰 Narxi: {$base} so'm
+if (!empty($st['step']) && $st['step'] === 'edit_premium_1') {
+if (is_numeric($text) && $text > 0) {
+$stmt = mysqli_prepare($connect, "UPDATE settings SET premium_1_month = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt, 'i', $text);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+sendMessage($chat_id, "✅ Premium 1 oy narxi {$text} so'm ga o'zgartirildi!");
+clear_step($chat_id);
+} else {
+sendMessage($chat_id, "⚠️ Iltimos to'g'ri raqam kiriting!");
+}
+exit;
+}
+
+if (!empty($st['step']) && $st['step'] === 'edit_premium_3') {
+if (is_numeric($text) && $text > 0) {
+$stmt = mysqli_prepare($connect, "UPDATE settings SET premium_3_month = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt, 'i', $text);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+sendMessage($chat_id, "✅ Premium 3 oy narxi {$text} so'm ga o'zgartirildi!");
+clear_step($chat_id);
+} else {
+sendMessage($chat_id, "⚠️ Iltimos to'g'ri raqam kiriting!");
+}
+exit;
+}
+
+if (!empty($st['step']) && $st['step'] === 'edit_premium_6') {
+if (is_numeric($text) && $text > 0) {
+$stmt = mysqli_prepare($connect, "UPDATE settings SET premium_6_month = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt, 'i', $text);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+sendMessage($chat_id, "✅ Premium 6 oy narxi {$text} so'm ga o'zgartirildi!");
+clear_step($chat_id);
+} else {
+sendMessage($chat_id, "⚠️ Iltimos to'g'ri raqam kiriting!");
+}
+exit;
+}
+
+if (!empty($st['step']) && $st['step'] === 'edit_premium_12') {
+if (is_numeric($text) && $text > 0) {
+$stmt = mysqli_prepare($connect, "UPDATE settings SET premium_12_month = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt, 'i', $text);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+sendMessage($chat_id, "✅ Premium 12 oy narxi {$text} so'm ga o'zgartirildi!");
+clear_step($chat_id);
+} else {
+sendMessage($chat_id, "⚠️ Iltimos to'g'ri raqam kiriting!");
+}
+exit;
+}
+}
+}
+
+if ($callback_data && mb_stripos($callback_data, "cancelpay=") !== false) {
+$orderId = explode("=", $callback_data, 2)[1];
+if (!$orderId) {
+answerCallback($callback_id, "❌ Bekor qilinadigan to'lov topilmadi!", true);
+exit;
+}
+$stmt = mysqli_prepare($connect, "SELECT * FROM review WHERE order_id = ? AND status = 'unpaid' LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $orderId);
+mysqli_stmt_execute($stmt);
+$res = mysqli_stmt_get_result($stmt);
+$row = mysqli_fetch_assoc($res);
+mysqli_stmt_close($stmt);
+
+if (!$row) {
+answerCallback($callback_id, "❌ Bekor qilinadigan to'lov topilmadi!", true);
+exit;
+}
+
+$stmt = mysqli_prepare($connect, "UPDATE review SET status = 'cancel', date = NOW() WHERE order_id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $orderId);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+
+deleteMessage($chat_id, $message_id);
+
+sendMessage($row['user_id'], "❌ <b>{$row['price']} so'mlik to'lov bekor qilindi!</b>\n\n🎯 Stars: <b>{$row['quantity']}</b>\n👤 Qabul qiluvchi: <b>{$row['username']}</b>");
+answerCallback($callback_id, "To'lov bekor qilindi.", true);
+exit;
+}
+
+if ($callback_data && mb_stripos($callback_data, "cancelpremium=") !== false) {
+$orderId = explode("=", $callback_data, 2)[1];
+if (!$orderId) {
+answerCallback($callback_id, "❌ Bekor qilinadigan to'lov topilmadi!", true);
+exit;
+}
+$stmt = mysqli_prepare($connect, "SELECT * FROM premium_orders WHERE order_id = ? AND status = 'unpaid' LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $orderId);
+mysqli_stmt_execute($stmt);
+$res = mysqli_stmt_get_result($stmt);
+$row = mysqli_fetch_assoc($res);
+mysqli_stmt_close($stmt);
+
+if (!$row) {
+answerCallback($callback_id, "❌ Bekor qilinadigan to'lov topilmadi!", true);
+exit;
+}
+
+$stmt = mysqli_prepare($connect, "UPDATE premium_orders SET status = 'cancel', date = NOW() WHERE order_id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $orderId);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+
+deleteMessage($chat_id, $message_id);
+
+sendMessage($row['user_id'], "❌ <b>{$row['price']} so'mlik to'lov bekor qilindi!</b>\n\n🎯 Premium: <b>{$row['quantity']} oy</b>\n👤 Qabul qiluvchi: <b>{$row['username']}</b>");
+answerCallback($callback_id, "To'lov bekor qilindi.", true);
+exit;
+}
+
+function process_order($chat_id, $connect, $card_number) {
+$step = load_step($chat_id);
+if (empty($step['stars']) || empty($step['receiver'])) {
+sendMessage($chat_id, "⚠️ Buyurtma to'liq emas. Iltimos miqdor va username kiriting.");
+return;
+}
+sendMessage($chat_id, "<b>💳 To'lov yaratilmoqda — CheckCard orqali. Iltimos kuting...</b>");
+process_checkcard_payment($chat_id, $connect);
+}
+
+function process_premium_order($chat_id, $connect, $card_number) {
+$step = load_step($chat_id);
+if (empty($step['months']) || empty($step['receiver'])) {
+sendMessage($chat_id, "⚠️ Buyurtma to'liq emas. Iltimos muddat va username kiriting.");
+return;
+}
+sendMessage($chat_id, "<b>💳 To'lov yaratilmoqda — CheckCard orqali. Iltimos kuting...</b>");
+process_premium_checkcard_payment($chat_id, $connect);
+}
+
+function process_checkcard_payment($chat_id, $connect) {
+global $CheckCardPay;
+$step = load_step($chat_id);
+$stars = intval($step['stars'] ?? 0);
+$receiver = $step['receiver'] ?? '';
+$base_amount = $stars * settings($connect)['star_price'];
+$rand_num = rand(1, 100);
+$amount = $base_amount + $rand_num;
+
+$resp = $CheckCardPay->create_checkout($amount);
+if ($resp === false) {
+sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik. Iltimos keyinroq urinib ko'ring.");
+return;
+}
+
+$response = json_decode($resp, true);
+if (!$response) {
+sendMessage($chat_id, "⚠️ CheckCard API dan noaniq javob olindi.");
+error_log("CheckCard create invalid json: " . $resp);
+return;
+}
+if (isset($response['status']) && $response['status'] === 'error') {
+$msg = $response['message'] ?? 'CheckCard xatolik';
+if ($msg === "There is a pending payment for this amount.") {
+sendMessage($chat_id, "⚠️ Ushbu miqdorda hali yakunlanmagan to'lov mavjud.\n\n💡 Masalan: " . ($amount + 500) . " so'm miqdorida qayta urinib ko'ring.");
+} else {
+sendMessage($chat_id, "⚠️ " . $msg);
+}
+return;
+}
+
+$order_code = $response['order'] ?? ($response['order_code'] ?? null);
+$insert_id  = $response['insert_id'] ?? null;
+$pay_url    = $response['pay_url'] ?? null;
+
+if (!$order_code) {
+sendMessage($chat_id, "⚠️ CheckCard javobida order topilmadi.");
+error_log("CheckCard response missing order: " . $resp);
+return;
+}
+
+$stmt = mysqli_prepare($connect, "INSERT INTO review (user_id, order_id, price, status, quantity, username, payment_method, date) VALUES (?, ?, ?, 'unpaid', ?, ?, 'checkcard', NOW())");
+$user_id_q = intval($chat_id);
+$order_q = $order_code;
+$amount_q = intval($amount);
+$stars_q = intval($stars);
+$receiver_q = $receiver;
+mysqli_stmt_bind_param($stmt, 'isiis', $user_id_q, $order_q, $amount_q, $stars_q, $receiver_q);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+
+$kb_rows = [];
+if ($pay_url) {
+    $kb_rows[] = [['text' => "💳 To'lov sahifasini ochish", 'url' => $pay_url]];
+}
+$kb_rows[] = [['text' => "♻️ To'lov tekshirish", 'callback_data' => "CheckCard_check={$order_code}"]];
+$kb_rows[] = [['text' => "❌ Bekor qilish", 'callback_data' => "cancelpay={$order_code}"]];
+$keyboard = json_encode(['inline_keyboard' => $kb_rows], JSON_UNESCAPED_UNICODE);
+
+sendMessage($chat_id, "<b>💳 To'lov ma'lumotlari
+
+📋 Buyurtma #" . htmlspecialchars($insert_id ?? $order_code) . "
+└ 🎯 Stars: {$stars} ⭐️
+└ 💰 Narxi: {$base_amount} so'm
 └ 👤 Username: {$receiver}
 
-💳 Karta: <code>{$stars_card}</code>
-💵 To'lov miqdori: <b><u>{$amount} so'm</u></b>
+💳 Karta ma'lumotlari:
+└ 🏦 Karta raqami: <code>5614683582279246</code>
+└ 💵 To'lov miqdori: {$amount} so'm
 
-⚠️ Aynan shu miqdorni o'tkazing!
-Keyin '♻️ To'lovni tekshirish' tugmasini bosing.</b>", $kb);
+⚠️ Muhim: Ko'rsatilgan miqdorni to'lang: {$amount} so'm (aniq miqdorda)
+📱 To'lov qilganingizdan so'ng, botda '♻️ To'lov tekshirish' tugmasini bosing</b>", $keyboard);
 
-    clear_step($chat_id);
+clear_step($chat_id);
 }
 
-function make_premium_payment($chat_id, $connect, $CC) {
-    global $premium_card;
-    $st = load_step($chat_id);
-    if (empty($st['months']) || empty($st['receiver'])) {
-        sendMessage($chat_id, "⚠️ Buyurtma to'liq emas."); return;
-    }
-    $months   = intval($st['months']);
-    $receiver = $st['receiver'];
-    $base     = intval($st['price']);
-    $amount   = $base + rand(1, 100);
+function process_premium_checkcard_payment($chat_id, $connect) {
+global $CheckCardPay;
+$step = load_step($chat_id);
+$months = intval($step['months'] ?? 0);
+$receiver = $step['receiver'] ?? '';
+$base_amount = intval($step['price'] ?? 0);
+$rand_num = rand(1, 100);
+$amount = $base_amount + $rand_num;
 
-    $raw  = $CC->create($amount);
-    $resp = $raw ? json_decode($raw, true) : null;
+$resp = $CheckCardPay->create_checkout($amount);
+if ($resp === false) {
+sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik. Iltimos keyinroq urinib ko'ring.");
+return;
+}
 
-    if (!$resp) { sendMessage($chat_id, "⚠️ CheckCard API bilan bog'lanishda xatolik."); return; }
-    if (($resp['status'] ?? '') === 'error') {
-        $msg = $resp['message'] ?? 'Xatolik';
-        if ($msg === "There is a pending payment for this amount.") {
-            sendMessage($chat_id, "⚠️ Ushbu miqdorda hali yakunlanmagan to'lov mavjud.\n\n💡 Masalan: " . ($amount + 500) . " so'm kiriting.");
-        } else {
-            sendMessage($chat_id, "⚠️ $msg");
-        }
-        return;
-    }
+$response = json_decode($resp, true);
+if (!$response) {
+sendMessage($chat_id, "⚠️ CheckCard API dan noaniq javob olindi.");
+error_log("CheckCard create invalid json: " . $resp);
+return;
+}
+if (isset($response['status']) && $response['status'] === 'error') {
+$msg = $response['message'] ?? 'CheckCard xatolik';
+if ($msg === "There is a pending payment for this amount.") {
+sendMessage($chat_id, "⚠️ Ushbu miqdorda hali yakunlanmagan to'lov mavjud.\n\n💡 Masalan: " . ($amount + 500) . " so'm miqdorida qayta urinib ko'ring.");
+} else {
+sendMessage($chat_id, "⚠️ " . $msg);
+}
+return;
+}
 
-    $order_code = $resp['order'] ?? null;
-    $insert_id  = $resp['insert_id'] ?? $order_code;
-    if (!$order_code) { sendMessage($chat_id, "⚠️ API javobida order topilmadi."); return; }
+$order_code = $response['order'] ?? ($response['order_code'] ?? null);
+$insert_id  = $response['insert_id'] ?? null;
+$pay_url    = $response['pay_url'] ?? null;
 
-    $ins = mysqli_prepare($connect, "INSERT INTO premium_orders (user_id, order_id, price, status, quantity, username, payment_method) VALUES (?,?,?,'unpaid',?,?,'checkcard')");
-    $uid = intval($chat_id);
-    mysqli_stmt_bind_param($ins, 'isiis', $uid, $order_code, $amount, $months, $receiver);
-    mysqli_stmt_execute($ins); mysqli_stmt_close($ins);
+if (!$order_code) {
+sendMessage($chat_id, "⚠️ CheckCard javobida order topilmadi.");
+error_log("CheckCard response missing order: " . $resp);
+return;
+}
 
-    $kb = json_encode(['inline_keyboard' => [
-        [['text' => "♻️ To'lovni tekshirish", 'callback_data' => "check_prem={$order_code}"]],
-        [['text' => "❌ Bekor qilish",        'callback_data' => "cancel_prem={$order_code}"]],
-    ]], JSON_UNESCAPED_UNICODE);
+$stmt = mysqli_prepare($connect, "INSERT INTO premium_orders (user_id, order_id, price, status, quantity, username, payment_method, date) VALUES (?, ?, ?, 'unpaid', ?, ?, 'checkcard', NOW())");
+$user_id_q = intval($chat_id);
+$order_q = $order_code;
+$amount_q = intval($amount);
+$months_q = intval($months);
+$receiver_q = $receiver;
+mysqli_stmt_bind_param($stmt, 'isiis', $user_id_q, $order_q, $amount_q, $months_q, $receiver_q);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
 
-    sendMessage($chat_id, "<b>💳 To'lov ma'lumotlari
+$kb_rows = [];
+if ($pay_url) {
+    $kb_rows[] = [['text' => "💳 To'lov sahifasini ochish", 'url' => $pay_url]];
+}
+$kb_rows[] = [['text' => "♻️ To'lov tekshirish", 'callback_data' => "CheckCard_premium_check={$order_code}"]];
+$kb_rows[] = [['text' => "❌ Bekor qilish", 'callback_data' => "cancelpremium={$order_code}"]];
+$keyboard = json_encode(['inline_keyboard' => $kb_rows], JSON_UNESCAPED_UNICODE);
 
-📋 Buyurtma #{$insert_id}
-└ 👑 Premium: {$months} oy
-└ 💰 Narxi: {$base} so'm
+sendMessage($chat_id, "<b>💳 To'lov ma'lumotlari
+
+📋 Buyurtma #" . htmlspecialchars($insert_id ?? $order_code) . "
+└ 🎯 Premium: {$months} oy
+└ 💰 Narxi: {$base_amount} so'm
 └ 👤 Username: {$receiver}
 
-💳 Karta: <code>{$premium_card}</code>
-💵 To'lov miqdori: <b><u>{$amount} so'm</u></b>
+💳 Karta ma'lumotlari:
+└ 🏦 Karta raqami: <code>9860036625185040</code>
+└ 💵 To'lov miqdori: {$amount} so'm
 
-⚠️ Aynan shu miqdorni o'tkazing!
-Keyin '♻️ To'lovni tekshirish' tugmasini bosing.</b>", $kb);
+⚠️ Muhim: Ko'rsatilgan miqdorni to'lang: {$amount} so'm (aniq miqdorda)
+📱 To'lov qilganingizdan so'ng, botda '♻️ To'lov tekshirish' tugmasini bosing</b>", $keyboard);
 
-    clear_step($chat_id);
+clear_step($chat_id);
+}
+
+if ($callback_data && strpos($callback_data, "CheckCard_check=") === 0) {
+$order_code = explode("=", $callback_data)[1];
+
+$stmt = mysqli_prepare($connect, "SELECT * FROM review WHERE order_id = ? AND payment_method = 'checkcard' LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $order_code);
+mysqli_stmt_execute($stmt);
+$res = mysqli_stmt_get_result($stmt);
+$row = mysqli_fetch_assoc($res);
+mysqli_stmt_close($stmt);
+
+$response = $CheckCardPay->check_payment($order_code);
+if ($response === false) {
+answerCallback($callback_id, "⚠️ To'lovni tekshirishda xatolik.", true);
+exit;
+}
+
+$result = json_decode($response, true);
+if (!$result || ($result['status'] ?? '') !== 'success') {
+answerCallback($callback_id, "❌ Buyurtma topilmadi yoki API xatolik berdi!", true);
+exit;
+}
+
+$order_data = $result['data'] ?? [];
+$summa = (int)($order_data['amount'] ?? 0);
+$status = $order_data['status'] ?? '';
+$sav = date("H:i:s | Y-m-d");
+
+if ($status === "paid") {
+if ($row) {
+$stmt = mysqli_prepare($connect, "UPDATE review SET status = 'paid', date = NOW() WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 'i', $row['id']);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+
+$user_id = $row['user_id'];
+$quantity = intval($row['quantity']);
+$username_target = $row['username'];
+$price = $row['price'];
+$review_id = $row['id'];
+}
+
+if ($chat_id && $message_id) {
+@deleteMessage($chat_id, $message_id);
+}
+
+sendMessage($from_id, "<b>✅ To'lov muvaffaqiyatli qabul qilindi.\n💰 Summa: {$summa} so'm\n📱 Buyurtma hozir bajarilmoqda...</b>");
+
+if (!empty($review_id)) {
+$stmt = mysqli_prepare($connect, "UPDATE review SET status = 'completed', date = NOW() WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 'i', $review_id);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+}
+
+$quantity = isset($row['quantity']) ? intval($row['quantity']) : 0;
+$username_target = !empty($row['username']) ? $row['username'] : 'N/A';
+$price = !empty($row['price']) ? $row['price'] : intval($summa);
+$logText = "<b>✅ Buyurtma bajarildi (CheckCard)</b>\n\n🆔 <b>OrderCode:</b> {$order_code}\n👤 <b>Foydalanuvchi (chat_id):</b> {$user_id}\n📛 <b>Username:</b> {$username_target}\n⭐ <b>Stars:</b> {$quantity}\n💰 <b>Narx:</b> {$price} so'm\n📝 <b>OrderID (review.id):</b> " . ($review_id ?? 'N/A');
+$logs_chat = settings($connect)['logs'];
+sendMessage($logs_chat, $logText);
+sendMessage(CHANNEL_TO_JOIN, $logText);
+
+if (!empty($quantity) && !empty($username_target)) {
+$username_for_api = $username_target;
+$api_url = "https://domen.uz/stars.php?username=" . urlencode($username_for_api) . "&starssoni=" . urlencode($quantity);
+
+$ch = curl_init($api_url);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$api_resp = curl_exec($ch);
+$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+$delivered = ($api_resp !== false && $http_code >= 200 && $http_code < 300);
+
+if ($delivered) {
+$stmt = mysqli_prepare($connect, "UPDATE review SET status = 'completed', date = NOW() WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 'i', $review_id);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+
+sendMessage($from_id, "<b>⭐️ {$quantity} stars muvaffaqiyatli yuborildi: {$username_target}\n🎉 Rahmat!</b>");
+} else {
+$errText = "<b>⚠️ Stars yetkazishda xatolik yuz berdi.\nOrderCode: {$order_code}\nFoydalanuvchi: {$from_id}\nUsername: {$username_target}\nStars: {$quantity}\nAPI_http_code: {$http_code}\nAPI_resp: " . htmlspecialchars(substr($api_resp ?? '', 0, 1000)) . "</b>";
+sendMessage($from_id, "<b>⚠️ To'lov qabul qilindi, lekin stars yetkazishda muammo yuz berdi. Admin bilan bog'laning yoki keyin qayta tekshiring.</b>");
+sendMessage($logs_chat, $errText);
+sendMessage(CHANNEL_TO_JOIN, $errText);
+if (!empty($admin)) sendMessage($admin, $errText);
+$stmt = mysqli_prepare($connect, "UPDATE review SET status = 'failed_delivery', date = NOW() WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 'i', $review_id);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+}
+}
+
+answerCallback($callback_id, "✅ To'lov tekshirildi va ishlov berilmoqda.", true);
+} elseif ($status === "cancel") {
+if ($row) {
+$stmt = mysqli_prepare($connect, "UPDATE review SET status = 'cancel', date = NOW() WHERE order_id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $order_code);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+}
+
+deleteMessage($chat_id, $message_id);
+sendMessage($from_id, "❌ Sizning {$summa} so'mlik to'lovingiz bekor qilindi!");
+answerCallback($callback_id, "To'lov bekor qilindi.", true);
+} elseif ($status === "pending") {
+answerCallback($callback_id, "❌ To'lov hali amalga oshirilmagan.", true);
+} else {
+answerCallback($callback_id, "⚠️ To'lov holati: $status", true);
+}
+exit;
+}
+
+if ($callback_data && strpos($callback_data, "CheckCard_premium_check=") === 0) {
+$order_code = explode("=", $callback_data)[1];
+$stmt = mysqli_prepare($connect, "SELECT * FROM premium_orders WHERE order_id = ? AND payment_method = 'checkcard' LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $order_code);
+mysqli_stmt_execute($stmt);
+$res = mysqli_stmt_get_result($stmt);
+$row = mysqli_fetch_assoc($res);
+mysqli_stmt_close($stmt);
+
+$response = $CheckCardPay->check_payment($order_code);
+if ($response === false) {
+answerCallback($callback_id, "⚠️ To'lovni tekshirishda xatolik.", true);
+exit;
+}
+
+$result = json_decode($response, true);
+if (!$result || ($result['status'] ?? '') !== 'success') {
+answerCallback($callback_id, "❌ Buyurtma topilmadi yoki API xatolik berdi!", true);
+exit;
+}
+
+$order_data = $result['data'] ?? [];
+$summa = (int)($order_data['amount'] ?? 0);
+$status = $order_data['status'] ?? '';
+$sav = date("H:i:s | Y-m-d");
+
+if ($status === "paid") {
+if ($row) {
+$stmt = mysqli_prepare($connect, "UPDATE premium_orders SET status = 'paid', date = NOW() WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 'i', $row['id']);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+
+$user_id = $row['user_id'];
+$quantity = intval($row['quantity']);
+$username_target = $row['username'];
+$price = $row['price'];
+$review_id = $row['id'];
+}
+
+if ($chat_id && $message_id) {
+@deleteMessage($chat_id, $message_id);
+}
+
+sendMessage($from_id, "<b>✅ To'lov muvaffaqiyatli qabul qilindi.\n💰 Summa: {$summa} so'm\n📱 Buyurtma hozir bajarilmoqda...</b>");
+
+if (!empty($review_id)) {
+$stmt = mysqli_prepare($connect, "UPDATE premium_orders SET status = 'completed', date = NOW() WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 'i', $review_id);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+}
+
+$quantity = isset($row['quantity']) ? intval($row['quantity']) : 0;
+$username_target = !empty($row['username']) ? $row['username'] : 'N/A';
+$price = !empty($row['price']) ? $row['price'] : intval($summa);
+$logText = "<b>✅ Premium buyurtma bajarildi (CheckCard)</b>\n\n🆔 <b>OrderCode:</b> {$order_code}\n👤 <b>Foydalanuvchi (chat_id):</b> {$user_id}\n📛 <b>Username:</b> {$username_target}\n👑 <b>Premium:</b> {$quantity} oy\n💰 <b>Narx:</b> {$price} so'm\n📝 <b>OrderID (premium_orders.id):</b> " . ($review_id ?? 'N/A');
+$logs_chat = settings($connect)['logs'];
+sendMessage($logs_chat, $logText);
+sendMessage(CHANNEL_TO_JOIN, $logText);
+
+if (!empty($quantity) && !empty($username_target)) {
+$username_for_api = $username_target;
+$api_url = "https://domen.uz/premium.php?username=" . urlencode($username_for_api) . "&premiumoyi=" . urlencode($quantity);
+$ch = curl_init($api_url);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$api_resp = curl_exec($ch);
+$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+$delivered = ($api_resp !== false && $http_code >= 200 && $http_code < 300);
+if ($delivered) {
+$stmt = mysqli_prepare($connect, "UPDATE premium_orders SET status = 'completed', date = NOW() WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 'i', $review_id);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+sendMessage($from_id, "<b>👑 {$quantity} oylik Premium muvaffaqiyatli yuborildi: {$username_target}\n🎉 Rahmat!</b>");
+} else {
+$errText = "<b>⚠️ Premium yetkazishda xatolik yuz berdi.\nOrderCode: {$order_code}\nFoydalanuvchi: {$from_id}\nUsername: {$username_target}\nPremium: {$quantity} oy\nAPI_http_code: {$http_code}\nAPI_resp: " . htmlspecialchars(substr($api_resp ?? '', 0, 1000)) . "</b>";
+sendMessage($from_id, "<b>⚠️ To'lov qabul qilindi, lekin Premium yetkazishda muammo yuz berdi. Admin bilan bog'laning yoki keyin qayta tekshiring.</b>");
+sendMessage($logs_chat, $errText);
+sendMessage(CHANNEL_TO_JOIN, $errText);
+if (!empty($admin)) sendMessage($admin, $errText);
+$stmt = mysqli_prepare($connect, "UPDATE premium_orders SET status = 'failed_delivery', date = NOW() WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 'i', $review_id);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+}
+}
+
+answerCallback($callback_id, "✅ To'lov tekshirildi va ishlov berilmoqda.", true);
+} elseif ($status === "cancel") {
+if ($row) {
+$stmt = mysqli_prepare($connect, "UPDATE premium_orders SET status = 'cancel', date = NOW() WHERE order_id = ? LIMIT 1");
+mysqli_stmt_bind_param($stmt, 's', $order_code);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+}
+
+deleteMessage($chat_id, $message_id);
+sendMessage($from_id, "❌ Sizning {$summa} so'mlik to'lovingiz bekor qilindi!");
+answerCallback($callback_id, "To'lov bekor qilindi.", true);
+} elseif ($status === "pending") {
+answerCallback($callback_id, "❌ To'lov hali amalga oshirilmagan.", true);
+} else {
+answerCallback($callback_id, "⚠️ To'lov holati: $status", true);
+}
+exit;
 }
 
 exit;
