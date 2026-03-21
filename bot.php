@@ -136,7 +136,7 @@ mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `review` (
     `status` TEXT,
     `quantity` INT,
     `username` TEXT,
-    `payment_method` VARCHAR(20) DEFAULT 'prohamyon',
+    `payment_method` VARCHAR(20) DEFAULT '',
     `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
@@ -169,7 +169,7 @@ mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `premium_orders` (
     `status` TEXT,
     `quantity` INT,
     `username` TEXT,
-    `payment_method` VARCHAR(20) DEFAULT 'prohamyon',
+    `payment_method` VARCHAR(20) DEFAULT '',
     `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
@@ -251,6 +251,230 @@ require_subscription_prompt($chat_id);
 exit;
 }
 }
+
+
+
+
+//Ushbu skript checkcard.uz API orqali to'ldirish uchun namuna
+
+if(stripos($data,"Pay^")!==false){
+    del();
+    $payment_type = explode("^",$data)[1];
+
+    sms($chat_id,"💵 Balansizni necha so'mga to'ldirmoqchisiz?
+📰 Minimal miqdor: 1000 so'm",$ort);
+
+    file_put_contents("user/$chat_id.step","send_amount^$payment_type");
+}
+
+
+if(stripos($step,"send_amount^")!==false && $text!="⏩ Orqaga"){
+
+    $payment_type = explode("^",$step)[1];
+    $amount = trim($text);
+
+    if(!ctype_digit($amount)){
+        sms($cid,"• Faqat raqamlardan foydalaning!",null);
+        exit;
+    }
+
+    $amount = (int)$amount;
+
+    if($amount < 1000 || $amount > 10000000){
+        sms($cid,"<u>⬇️ Minimal:</u> 1.000 so‘m
+<u>⬆️ Maksimal:</u> 10.000.000 so‘m",null);
+        exit;
+    }
+
+    $shop_id  = 647282;
+    $shop_key = "884UESPA3H"; //API ID va API KEYni @CheckCarduz_bot'dan olasiz
+
+    $api_url = "https://checkcard.uz/api?method=create&shop_id=$shop_id&shop_key=$shop_key&amount=$amount";
+
+    $response = file_get_contents($api_url);
+    $response = json_decode($response,true);
+
+    if(!$response){
+        sms($cid,"⚠️ API bilan bog‘lanishda xatolik!",null);
+        exit;
+    }
+
+    if($response['status']==='error'){
+        if($response['message']=="There is a pending payment for this amount."){
+            sms($cid,"⚠️ Ushbu miqdorda hali yakunlanmagan to‘lov mavjud.
+
+💡 Masalan: ".($amount+500)." so‘m",null);
+        }else{
+            sms($cid,"⚠️ ".$response['message'],null);
+        }
+        exit;
+    }
+
+    $order_code = $response['order'];
+
+    mysqli_query($connect,"INSERT INTO checkout
+    (order_code, user_id, amount, status)
+    VALUES ('$order_code','$cid','$amount','pending')");
+
+    $insert_id = mysqli_insert_id($connect);
+
+    sms($cid,"✅ To‘lov miqdori qabul qilindi!
+
+🆔 Buyurtma ID: <code>$insert_id</code>
+💵 Miqdori: $amount so‘m
+💳 To‘lov uchun karta: <code>Karta raqamingizni qo'yasiz</code>
+⏰ Kutish vaqti: 5 daqiqa",json_encode([
+        'inline_keyboard'=>[
+            [['text'=>"♻️ To'lovni tekshirish",'callback_data'=>"Tasdiqlash^$order_code"]],
+            [['text'=>"⛔️ Bekor qilish",'callback_data'=>"CancelPay^$order_code"]]
+        ]
+    ]));
+
+    unlink("user/$cid.step");
+}
+
+
+
+if (stripos($data, "Tasdiqlash^") !== false) {
+
+    $order_code = explode("^", $data)[1];
+
+    $api_url = "https://checkcard.uz/api?method=check&order=" . urlencode($order_code);
+    $response = file_get_contents($api_url);
+    $result = json_decode($response, true);
+
+    if (!$result || $result['status'] !== 'success') {
+        sms($chat_id, "❌ Buyurtma topilmadi yoki API xatolik berdi!", $m);
+        exit;
+    }
+
+    $order_data = $result['data'];
+    $summa  = (int)$order_data['amount'];
+    $status = $order_data['status'];
+    $sav    = date("H:i:s | Y-m-d");
+
+    mysqli_query($connect,"
+        UPDATE checkout 
+        SET status='$status', amount='$summa'
+        WHERE order_code='$order_code'
+    ");
+
+    if ($status === "paid") {
+        
+		mysqli_query($connect,"UPDATE checkout SET status = 'paid' WHERE order_code = '$order_code'");
+        mysqli_query($connect,"
+            UPDATE users 
+            SET balance = balance + $summa 
+            WHERE id = '$chat_id'
+        ");
+
+        del();
+
+        sms($chat_id, "✅ Hisobingizga <b>$summa</b> so'm qo‘shildi.", $m);
+
+        $user_balance_row = mysqli_fetch_assoc(
+            mysqli_query($connect,"SELECT balance FROM users WHERE id='$chat_id'")
+        );
+        $user_balance = $user_balance_row['balance'] ?? 0;
+
+        sms($admin, "🎉 Foydalanuvchi to‘lov qildi.
+
+👤 User: <a href='tg://user?id=$chat_id'>$chat_id</a>
+💰 Balansi: $user_balance so'm
+💳 To'lov miqdori: $summa so'm
+🧾 Order: <code>$order_code</code>
+
+⏰ $sav", null);
+unlink("user/$user_id.step");
+
+    } elseif ($status === "cancel") {
+		mysqli_query($connect,"UPDATE checkout SET status = 'cancel' WHERE order_code = '$order_code'");
+
+        del();
+        sms($chat_id, "❌ Sizning <b>$summa</b> so‘mlik to‘lovingiz bekor qilindi!", $m);
+		unlink("user/$user_id.step");
+
+    } elseif ($status === "pending") {
+
+        accl($qid, "⏳ To‘lov hali amalga oshirilmagan.", true);
+
+    } else {
+
+        sms($chat_id, "⚠️ To‘lov holati: <b>$status</b>", $m);
+		unlink("user/$user_id.step");
+    }
+}
+
+
+if (stripos($data, "CancelPay^") !== false) {
+
+    $order_code = explode("^", $data)[1];
+    del();
+
+    $check = mysqli_fetch_assoc(mysqli_query(
+        $connect,
+        "SELECT status FROM checkout WHERE order_code = '$order_code'"
+    ));
+
+    if ($check && $check['status'] !== 'paid') {
+
+        mysqli_query(
+            $connect,
+            "UPDATE checkout SET status='cancel' WHERE order_code='$order_code'"
+        );
+
+        @file_get_contents(
+            "https://checkcard.uz/api?method=cancel&order=" . urlencode($order_code)
+        );
+
+        sms($chat_id, "❌ <b>Sizning to‘lovingiz bekor qilindi!</b>", $ort);
+		unlink("user/$user_id.step");
+
+    } else {
+
+        sms($chat_id, "⚠️ <b>Bu to‘lov allaqachon qabul qilingan!</b>", $ort);
+		unlink("user/$user_id.step");
+    }
+}
+
+if (isset($_GET['update']) && $_GET['update'] === "cancel") {
+
+
+    $limit_time = date("Y-m-d H:i:s", time() - 300);
+    $q = mysqli_query($connect,"
+        SELECT order_code, user_id, amount
+        FROM checkout
+        WHERE status='pending'
+        AND created_at <= '$limit_time'
+    ");
+
+    while ($row = mysqli_fetch_assoc($q)) {
+
+        $order_code = $row['order_code'];
+        $user_id    = $row['user_id'];
+        $amount     = $row['amount'];
+
+        mysqli_query($connect,"
+            UPDATE checkout
+            SET status='cancel'
+            WHERE order_code='$order_code'
+            AND status='pending'
+        ");
+
+
+        sms($user_id,
+            "⏰ <b>To‘lov muddati tugadi!</b>
+
+❌ <b>$amount</b> so‘mlik to‘lov 5 daqiqa ichida tasdiqlanmagani sababli bekor qilindi.",
+            null
+        );
+    }
+
+    echo "OK";
+    exit;
+}
+
+
 
 if ($chat_id) {
 $stmt = mysqli_prepare($connect, "SELECT id FROM users WHERE user_id = ? LIMIT 1");
@@ -778,7 +1002,7 @@ sendMessage($chat_id, "<b>💳 To'lov ma'lumotlari
 └ 👤 Username: {$receiver}
 
 💳 Karta ma'lumotlari:
-└ 🏦 Karta raqami: <code>9860036625185040</code>
+└ 🏦 Karta raqami: <code>5614683582279246</code>
 └ 💵 To'lov miqdori: $amount so'm
 
 ⚠️ Muhim: Ko'rsatilgan miqdorni to'lang: $amount so'm (aniq miqdorda)
