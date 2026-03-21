@@ -36,7 +36,7 @@ class CheckCardPay {
 
     public function create($amount) {
         // 2-hujjatdagi namuna bilan bir xil: GET so'rov
-        $url = "https://checkcard.uz/api?method=create&shop_id=" . urlencode($this->shop_id) . "&shop_key=" . urlencode($this->shop_key) . "&amount=" . intval($amount);
+        $url = "https://checkcard.uz/api?method=create&shop_id=" . urlencode($this->shop_id) . "&shop_key=" . urlencode($this->shop_key) . "&amount=" . intval($amount) . "&payurl=true";
         $r = @file_get_contents($url);
         if ($r === false) { error_log("CheckCard create failed, amount=$amount"); return false; }
         return $r;
