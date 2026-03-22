@@ -204,8 +204,15 @@ mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `game_bonus` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 // Majburiy obuna kanallari uchun ustun qo'shish (agar yo'q bo'lsa)
-@mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN IF NOT EXISTS `channels` TEXT DEFAULT NULL");
-@mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN IF NOT EXISTS `bot_active` TINYINT DEFAULT 1");
+$cols_res = mysqli_query($connect, "SHOW COLUMNS FROM `settings`");
+$existing_cols = [];
+if ($cols_res) { while ($col = mysqli_fetch_assoc($cols_res)) { $existing_cols[] = $col["Field"]; } }
+if (!in_array("channels", $existing_cols)) {
+    mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `channels` TEXT DEFAULT NULL");
+}
+if (!in_array("bot_active", $existing_cols)) {
+    mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `bot_active` TINYINT DEFAULT 1");
+}
 
 $checkSettings = mysqli_query($connect, "SELECT COUNT(*) as total FROM settings");
 $countRow = mysqli_fetch_assoc($checkSettings);
