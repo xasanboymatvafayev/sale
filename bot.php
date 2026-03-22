@@ -10,12 +10,12 @@ define("DB_USERNAME", "root");
 define("DB_PASSWORD", "SngtdKxJGJMafHfetMzLBszTQwMprNwi");
 define("DB_NAME", "railway");
 define("DB_PORT", 57444);
-define('CHECKCARD_SHOP_ID', '647282');   // @CheckCardUz_bot dan olingan shop id
-define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan shop key
+define('CHECKCARD_SHOP_ID', 'SIZNING_SHOP_ID');   // @CheckCardUz_bot dan olingan shop id
+define('CHECKCARD_SHOP_KEY', 'SIZNING_SHOP_KEY'); // @CheckCardUz_bot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
-define('SMM_API_KEY', 'bca283e2aaeb2b2752fb79c54073f48b'); // super-sim.uz dan olingan API key
+define('SMM_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz dan olingan API key
 define('SMM_API_URL', 'https://super-sim.uz/api/v2');
-define('NUMBER_API_KEY', 'bca283e2aaeb2b2752fb79c54073f48b'); // super-sim.uz number API key
+define('NUMBER_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz number API key
 define('NUMBER_API_URL', 'https://super-sim.uz/api/v2');
 
 $card_number = "5614683582279246";
@@ -1279,23 +1279,29 @@ if ($callback_data && strpos($callback_data, "smm_cancel_pay=") === 0) {
 // ─── 📞 Virtual Nomer tizimi ─────────────────────────────────────────────────
 function number_api($action, $params = []) {
     if (NUMBER_API_KEY === 'SIZNING_NUMBER_API_KEY') {
-        return ['error' => 'Number API key ornatilmagan!'];
+        return ['error' => 'Number API key ornatilmagan! @SuperSim_Bot dan oling.'];
     }
     $url = NUMBER_API_URL . '?action=' . $action . '&key=' . NUMBER_API_KEY;
-    foreach ($params as $k => $v) $url .= '&' . $k . '=' . urlencode($v);
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-    $res = curl_exec($ch); curl_close($ch);
-    if (!$res) return ['error' => 'Ulanish xatoligi'];
+    foreach ($params as $k => $v) {
+        $url .= '&' . $k . '=' . urlencode($v);
+    }
+    $ctx = stream_context_create(['http' => ['timeout' => 15], 'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]);
+    $res = @file_get_contents($url, false, $ctx);
+    if ($res === false) {
+        // curl bilan ham sinab ko'rish
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => 1, CURLOPT_SSL_VERIFYPEER => 0, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => 1]);
+        $res = curl_exec($ch);
+        $curl_err = curl_error($ch);
+        curl_close($ch);
+        if (!$res) return ['error' => 'Ulanish xatoligi: ' . $curl_err];
+    }
     $decoded = json_decode($res, true);
-    return $decoded ?: ['error' => 'Javob xatoligi: ' . substr($res, 0, 80)];
+    return $decoded ?: ['error' => 'Javob xatoligi: ' . substr($res, 0, 100)];
 }
 
 // number_main — asosiy sahifa + davlatlar ro'yxati
 if ($callback_data === "number_main" || ($callback_data && strpos($callback_data, "numpage=") === 0)) {
-    deleteMessage($chat_id, $message_id);
     $page = 0;
     if ($callback_data && strpos($callback_data, "numpage=") === 0) {
         $parts_np = explode("=", $callback_data);
@@ -1329,11 +1335,17 @@ if ($callback_data === "number_main" || ($callback_data && strpos($callback_data
     $kb[] = [['text' => "📊 TOP 10", 'callback_data' => "numtop10"], ['text' => "💸 Eng arzon", 'callback_data' => "numarzon"]];
     $kb[] = [['text' => "🔙 Orqaga", 'callback_data' => "menu"]];
     $bal_n = get_balance($chat_id, $connect);
-    sendMessage($chat_id, "<b>📞 Virtual Nomer olish</b>
+    $txt_n = "<b>📞 Virtual Nomer olish</b>
 
 💰 Balansingiz: <b>" . number_format($bal_n, 0, '.', ' ') . " so'm</b>
 
-🌍 Davlatni tanlang:", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+🌍 Davlatni tanlang:";
+    $kb_json = json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE);
+    if ($message_id) {
+        editMessage($chat_id, $message_id, $txt_n, $kb_json);
+    } else {
+        sendMessage($chat_id, $txt_n, $kb_json);
+    }
     exit;
 }
 
