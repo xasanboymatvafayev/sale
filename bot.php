@@ -16,7 +16,7 @@ define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
 define('SMM_API_KEY', 'bca283e2aaeb2b2752fb79c54073f48b'); // super-sim.uz dan olingan API key
 define('SMM_API_URL', 'https://super-sim.uz/api/v2');
 define('NUMBER_API_KEY', 'bca283e2aaeb2b2752fb79c54073f48b'); // super-sim.uz number API key
-define('NUMBER_API_URL', 'https://supersim.uz/api/v2');
+define('NUMBER_API_URL', 'https://super-sim.uz/api/v2');
 
 $card_number = "5614683582279246";
 
