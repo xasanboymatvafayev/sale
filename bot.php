@@ -17,7 +17,7 @@ define('ISBOT_CHANNEL', '@Nitesms');   // Isbot kanali (muvaffaqiyatli buyurtmal
 define('SMM_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz dan olingan API key
 define('SMM_API_URL', 'https://super-sim.uz/api/v2');
 define('NUMBER_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz number API key
-define('NUMBER_API_URL', 'https://supersim.uz/api/v2');
+define('NUMBER_API_URL', 'https://super-sim.uz/api/v2');
 
 $card_number = "5614683582279246";
 
