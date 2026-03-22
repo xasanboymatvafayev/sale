@@ -594,7 +594,7 @@ exit;
 
 if ($callback_data === "admin_prices" && $from_id == $admin) {
 $settings = settings($connect);
-$smm_cfg_p = cfg($connect);
+$smm_cfg_p = settings($connect);
 $smm_markup_now = intval($smm_cfg_p['smm_markup'] ?? 20);
 $smm_rate_now   = intval($smm_cfg_p['smm_usd_rate'] ?? 12700);
 $reply = json_encode(['inline_keyboard' => [
@@ -697,7 +697,7 @@ exit;
 
 if ($callback_data === "edit_smm_markup" && $from_id == $admin) {
 save_step($chat_id, ['step' => 'edit_smm_markup']);
-$cur = intval(cfg($connect)['smm_markup'] ?? 20);
+$cur = intval(settings($connect)['smm_markup'] ?? 20);
 sendMessage($chat_id, "📱 <b>SMM Panel markup foizi</b>
 
 Hozirgi: <b>{$cur}%</b>
@@ -708,7 +708,7 @@ exit;
 
 if ($callback_data === "edit_smm_rate" && $from_id == $admin) {
 save_step($chat_id, ['step' => 'edit_smm_rate']);
-$cur_rate = intval(cfg($connect)['smm_usd_rate'] ?? 12700);
+$cur_rate = intval(settings($connect)['smm_usd_rate'] ?? 12700);
 sendMessage($chat_id, "💱 <b>USD → So'm kursi</b>
 
 Hozirgi: <b>{$cur_rate} so'm</b>
@@ -1046,7 +1046,7 @@ if ($callback_data && strpos($callback_data, "smm_svc_") === 0) {
     ]);
     $kb = [[['text' => "🔙 Orqaga", 'callback_data' => "smm_cat_{$cat_idx}"]]];
     // API dan narxni olish va ko'rsatish
-    $smm_cfg_s  = cfg($connect);
+    $smm_cfg_s  = settings($connect);
     $usd_rate_s = intval($smm_cfg_s['smm_usd_rate'] ?? 12700);
     $markup_s   = intval($smm_cfg_s['smm_markup'] ?? 20);
     $svc_list_s = smm_api(['action' => 'services']);
@@ -1695,7 +1695,7 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
     // API rate = USD per 1000 ta
     // Hujjatda ko'rsatilgan narx = 1000 tasi uchun so'm
     // Formulasi: (rate_usd_per_1000 * qty / 1000) * usd_kurs * (1 + markup%)
-    $smm_cfg      = cfg($connect);
+    $smm_cfg      = settings($connect);
     $usd_rate     = intval($smm_cfg['smm_usd_rate'] ?? 12700); // 1 USD = X so'm
     $markup_pct   = intval($smm_cfg['smm_markup'] ?? 20);       // foiz qo'shimcha
     $base_som     = ($svc_rate_usd * $qty / 1000) * $usd_rate;  // asosiy narx so'mda
@@ -2051,7 +2051,7 @@ function offer_payment_method($chat_id, $connect, $type) {
     // Narxni hisoblash
     if ($type === 'stars') {
         $stars    = intval($st['stars'] ?? 0);
-        $base_som = $stars * cfg($connect)['star_price'];
+        $base_som = $stars * settings($connect)['star_price'];
     } else {
         $base_som = intval($st['price'] ?? 0);
     }
@@ -2102,7 +2102,7 @@ function pay_with_balance($chat_id, $connect, $type) {
     if ($type === 'stars') {
         $stars    = intval($st['stars'] ?? 0);
         $receiver = $st['receiver'] ?? '';
-        $amount   = $stars * cfg($connect)['star_price'];
+        $amount   = $stars * settings($connect)['star_price'];
     } else {
         $months   = intval($st['months'] ?? 0);
         $receiver = $st['receiver'] ?? '';
