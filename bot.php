@@ -13,7 +13,7 @@ define("DB_PORT", 57444);
 define('CHECKCARD_SHOP_ID', '647282');   // @CheckCardUz_bot dan olingan shop id
 define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
-define('SMM_API_KEY', '6ef936c5e8855be0182e2a0bf10434dd'); // locksmm.com dan olingan API key
+define('SMM_API_KEY', '02384f9ca0aee3aac0fa15e342514055'); // locksmm.com dan olingan API key
 define('SMM_API_URL', 'https://locksmm.com/api/v2');
 
 $card_number = "5614683582279246";
@@ -758,6 +758,11 @@ function deduct_balance($chat_id, $amount, $connect) {
 
 // ─── SMM API Helper ──────────────────────────────────────────────────────────
 function smm_api($params) {
+    // API key tekshirish
+    if (SMM_API_KEY === 'SIZNING_SMM_API_KEY') {
+        error_log("SMM_API_KEY o'rnatilmagan!");
+        return ['error' => 'SMM API key o'rnatilmagan! Admin paneldan sozlang.'];
+    }
     $post_data = array_merge(['key' => SMM_API_KEY], $params);
     $_post = [];
     foreach ($post_data as $k => $v) {
@@ -770,8 +775,19 @@ function smm_api($params) {
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
     curl_setopt($ch, CURLOPT_TIMEOUT, 15);
     $result = curl_exec($ch);
+    $curl_err = curl_error($ch);
     curl_close($ch);
-    return $result ? json_decode($result, true) : null;
+    if ($curl_err) {
+        error_log("SMM API curl error: " . $curl_err);
+        return ['error' => 'Ulanish xatoligi: ' . $curl_err];
+    }
+    if (!$result) return ['error' => 'Bo'sh javob'];
+    $decoded = json_decode($result, true);
+    if (!$decoded) {
+        error_log("SMM API invalid JSON: " . $result);
+        return ['error' => 'Noto'g'ri javob: ' . substr($result, 0, 100)];
+    }
+    return $decoded;
 }
 
 // SMM kategoriyalari (xizmat ID → kategoriya)
@@ -927,7 +943,18 @@ if ($callback_data === "smm_pay_balance") {
 ⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]]]], JSON_UNESCAPED_UNICODE));
     } else {
         add_balance($chat_id, $som_price, $connect);
-        sendMessage($chat_id, "⚠️ SMM API xatolik. Balans qaytarildi.");
+        $smm_err1 = $smm_res['error'] ?? json_encode($smm_res);
+        sendMessage($chat_id, "⚠️ <b>SMM API xatolik!</b>
+
+Xato: <code>{$smm_err1}</code>
+
+Balansingiz qaytarildi.");
+        sendMessage($admin, "⚠️ SMM API xato (smm_pay_balance)
+User: {$chat_id}
+Xizmat ID: {$svc_id}
+Link: {$link}
+Miqdor: {$qty}
+Xato: {$smm_err1}");
     }
     clear_step($chat_id);
     answerCallback($callback_id, "✅ To'landi!", true);
@@ -1770,7 +1797,18 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
 ⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]]]], JSON_UNESCAPED_UNICODE));
                 } else {
                     add_balance($chat_id, $som_price, $connect);
-                    sendMessage($chat_id, "⚠️ SMM API xatolik. Balans qaytarildi. Admin bilan bog'laning.");
+                    $smm_err2 = $smm_result2['error'] ?? json_encode($smm_result2);
+                    sendMessage($chat_id, "⚠️ <b>SMM API xatolik!</b>
+
+Xato: <code>{$smm_err2}</code>
+
+Balansingiz qaytarildi.");
+                    sendMessage($admin, "⚠️ SMM API xato (auto_balance)
+User: {$chat_id}
+Xizmat ID: {$st['smm_service_id']}
+Link: {$st['smm_link']}
+Miqdor: {$qty}
+Xato: {$smm_err2}");
                 }
                 clear_step($chat_id); exit;
             }
