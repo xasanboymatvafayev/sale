@@ -13,7 +13,7 @@ define("DB_PORT", 57444);
 define('CHECKCARD_SHOP_ID', '647282');   // @CheckCardUz_bot dan olingan shop id
 define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
-define('SMM_API_KEY', '2ca0da9c1de1da647d241df3a6b04a0f'); // locksmm.com dan olingan API key
+define('SMM_API_KEY', '6ef936c5e8855be0182e2a0bf10434dd'); // locksmm.com dan olingan API key
 define('SMM_API_URL', 'https://locksmm.com/api/v2');
 
 $card_number = "5614683582279246";
@@ -168,6 +168,24 @@ mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `premium_orders` (
     `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// ─── Balans jadvali ──────────────────────────────────────────────────────────
+mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `wallet` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
+    `balance` BIGINT DEFAULT 0,
+    `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_wallet_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `top_up` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
+    `order_code` TEXT,
+    `amount` INT,
+    `status` VARCHAR(20) DEFAULT 'unpaid',
+    `date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // ─── SMM jadvali ─────────────────────────────────────────────────────────────
 mysqli_query($connect, "CREATE TABLE IF NOT EXISTS `smm_orders` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -213,6 +231,12 @@ if (!in_array("channels", $existing_cols)) {
 if (!in_array("bot_active", $existing_cols)) {
     mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `bot_active` TINYINT DEFAULT 1");
 }
+if (!in_array("smm_markup", $existing_cols)) {
+    mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `smm_markup` INT DEFAULT 20");
+}
+if (!in_array("smm_usd_rate", $existing_cols)) {
+    mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `smm_usd_rate` INT DEFAULT 12700");
+}
 
 $checkSettings = mysqli_query($connect, "SELECT COUNT(*) as total FROM settings");
 $countRow = mysqli_fetch_assoc($checkSettings);
@@ -240,7 +264,7 @@ function settings($connect) {
 $res = mysqli_query($connect, "SELECT * FROM settings WHERE id = 1 LIMIT 1");
 $row = mysqli_fetch_assoc($res);
 if (!$row) {
-return ['logs' => CHANNEL_TO_JOIN, 'api_key' => 'none', 'star_price' => 240, 'premium_1_month' => 45000, 'premium_3_month' => 165000, 'premium_6_month' => 215000, 'premium_12_month' => 360000, 'channels' => null, 'bot_active' => 1];
+return ['logs' => CHANNEL_TO_JOIN, 'api_key' => 'none', 'star_price' => 240, 'premium_1_month' => 45000, 'premium_3_month' => 165000, 'premium_6_month' => 215000, 'premium_12_month' => 360000, 'channels' => null, 'bot_active' => 1, 'smm_markup' => 20, 'smm_usd_rate' => 12700];
 }
 return $row;
 }
@@ -356,7 +380,7 @@ function get_bot_username() {
 $menu = json_encode(['inline_keyboard' => [
 [['text' => "⭐️ Stars sotib olish", 'callback_data' => "stars"], ['text' => "👑 Premium", 'callback_data' => "premium"]],
 [['text' => "📱 SMM Panel", 'callback_data' => "smm_main"], ['text' => "🎮 Game Bar", 'callback_data' => "gamebar"]],
-[['text' => "👥 Do'stlarni taklif qilish", 'callback_data' => "referral"]],
+[['text' => "💳 Balans", 'callback_data' => "wallet_main"], ['text' => "👥 Do'stlarni taklif qilish", 'callback_data' => "referral"]],
 ]], JSON_UNESCAPED_UNICODE);
 
 if ($text !== null && strpos($text, "/start") === 0) {
@@ -570,12 +594,17 @@ exit;
 
 if ($callback_data === "admin_prices" && $from_id == $admin) {
 $settings = settings($connect);
+$smm_cfg_p = cfg($connect);
+$smm_markup_now = intval($smm_cfg_p['smm_markup'] ?? 20);
+$smm_rate_now   = intval($smm_cfg_p['smm_usd_rate'] ?? 12700);
 $reply = json_encode(['inline_keyboard' => [
 [['text' => "⭐ Stars narxi: {$settings['star_price']} so'm", 'callback_data' => "edit_star_price"]],
 [['text' => "👑 1 oy: {$settings['premium_1_month']} so'm", 'callback_data' => "edit_premium_1"]],
 [['text' => "👑 3 oy: {$settings['premium_3_month']} so'm", 'callback_data' => "edit_premium_3"]],
 [['text' => "👑 6 oy: {$settings['premium_6_month']} so'm", 'callback_data' => "edit_premium_6"]],
 [['text' => "👑 12 oy: {$settings['premium_12_month']} so'm", 'callback_data' => "edit_premium_12"]],
+[['text' => "📱 SMM Markup: {$smm_markup_now}%", 'callback_data' => "edit_smm_markup"]],
+[['text' => "💱 USD kurs: {$smm_rate_now} so'm", 'callback_data' => "edit_smm_rate"]],
 [['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]
 ]], JSON_UNESCAPED_UNICODE);
 editMessage($chat_id, $message_id, "<b>💰 Narxlarni o'zgartirish</b>\n\nO'zgartirmoqchi bo'lgan narxni tanlang:", $reply);
@@ -666,6 +695,28 @@ sendMessage($chat_id, "👑 Premium 12 oy narxini kiriting (so'm):");
 exit;
 }
 
+if ($callback_data === "edit_smm_markup" && $from_id == $admin) {
+save_step($chat_id, ['step' => 'edit_smm_markup']);
+$cur = intval(cfg($connect)['smm_markup'] ?? 20);
+sendMessage($chat_id, "📱 <b>SMM Panel markup foizi</b>
+
+Hozirgi: <b>{$cur}%</b>
+
+Yangi foiz kiriting (masalan: 20 = +20% narx qo'shiladi):");
+exit;
+}
+
+if ($callback_data === "edit_smm_rate" && $from_id == $admin) {
+save_step($chat_id, ['step' => 'edit_smm_rate']);
+$cur_rate = intval(cfg($connect)['smm_usd_rate'] ?? 12700);
+sendMessage($chat_id, "💱 <b>USD → So'm kursi</b>
+
+Hozirgi: <b>{$cur_rate} so'm</b>
+
+Yangi kursni kiriting (masalan: 12700):");
+exit;
+}
+
 if ($callback_data === "premium") {
 deleteMessage($chat_id, $message_id);
 $settings = settings($connect);
@@ -684,6 +735,26 @@ deleteMessage($chat_id, $message_id);
 sendAnimation($chat_id, "https://t.me/PhotosForBots/146", "🎉 <b>Uz Give</b>ga xush kelibsiz!\n\n🎯 <b>Nima olasiz, tanlang:</b>", $menu, "HTML");
 clear_step($chat_id);
 exit;
+}
+
+// ─── Wallet helper funksiyalar ───────────────────────────────────────────────
+function get_balance($chat_id, $connect) {
+    $r = mysqli_fetch_assoc(mysqli_query($connect, "SELECT balance FROM wallet WHERE user_id=" . intval($chat_id) . " LIMIT 1"));
+    return $r ? intval($r['balance']) : 0;
+}
+
+function add_balance($chat_id, $amount, $connect) {
+    $uid = intval($chat_id);
+    $amt = intval($amount);
+    mysqli_query($connect, "INSERT INTO wallet (user_id, balance) VALUES ({$uid}, {$amt})
+        ON DUPLICATE KEY UPDATE balance = balance + {$amt}");
+}
+
+function deduct_balance($chat_id, $amount, $connect) {
+    $uid = intval($chat_id);
+    $amt = intval($amount);
+    mysqli_query($connect, "UPDATE wallet SET balance = balance - {$amt} WHERE user_id={$uid} AND balance >= {$amt}");
+    return mysqli_affected_rows($connect) > 0;
 }
 
 // ─── SMM API Helper ──────────────────────────────────────────────────────────
@@ -764,6 +835,144 @@ function smm_categories() {
         ],
     ];
 }
+// ─── Balans to'ldirish funksiyasi ────────────────────────────────────────────
+function process_wallet_topup($chat_id, $connect, $amount) {
+    global $CheckCardPay, $stars_card;
+    if ($amount < 1000) {
+        sendMessage($chat_id, "⚠️ Minimal to'ldirish miqdori <b>1,000 so'm</b>!");
+        return;
+    }
+    $rand_num   = rand(1, 99);
+    $pay_amount = $amount + $rand_num;
+
+    $resp_w = $CheckCardPay->create_checkout($pay_amount);
+    $data_w = $resp_w ? json_decode($resp_w, true) : null;
+
+    if (!$data_w || ($data_w['status'] ?? '') === 'error') {
+        $err = $data_w['message'] ?? 'Xatolik';
+        if (stripos($err, 'pending') !== false) {
+            sendMessage($chat_id, "⚠️ Bu miqdorda kutilayotgan to'lov mavjud.
+💡 " . ($pay_amount + 500) . " so'm miqdorida urinib ko'ring.");
+        } else {
+            sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik: {$err}");
+        }
+        return;
+    }
+
+    $order_code_w = $data_w['order'] ?? null;
+    $insert_id_w  = $data_w['insert_id'] ?? $order_code_w;
+    $pay_url_w    = $data_w['pay_url'] ?? null;
+
+    if (!$order_code_w) {
+        sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik."); return;
+    }
+
+    $uid_w = intval($chat_id);
+    $amt_w = intval($amount);
+    $ins_w = mysqli_prepare($connect, "INSERT INTO top_up (user_id, order_code, amount, status) VALUES (?,?,?,'unpaid')");
+    mysqli_stmt_bind_param($ins_w, 'isi', $uid_w, $order_code_w, $amt_w);
+    mysqli_stmt_execute($ins_w);
+    mysqli_stmt_close($ins_w);
+
+    $kb_w = [];
+    if ($pay_url_w) $kb_w[] = [['text' => "💳 To'lov sahifasini ochish", 'url' => $pay_url_w]];
+    $kb_w[] = [['text' => "♻️ To'lovni tekshirish", 'callback_data' => "wallet_check={$order_code_w}"]];
+    $kb_w[] = [['text' => "❌ Bekor qilish", 'callback_data' => "wallet_cancel={$order_code_w}"]];
+
+    sendMessage($chat_id, "<b>💳 Balans to'ldirish</b>
+
+📋 Buyurtma #{$insert_id_w}
+💰 To'ldirish miqdori: <b>" . number_format($amount) . " so'm</b>
+
+💳 Karta: <code>{$stars_card}</code>
+💵 To'lov miqdori: <b><u>{$pay_amount} so'm</u></b>
+
+⚠️ Aynan shu miqdorni o'tkazing!
+To'lovdan so'ng '♻️ To'lovni tekshirish' tugmasini bosing.", json_encode(['inline_keyboard' => $kb_w], JSON_UNESCAPED_UNICODE));
+}
+
+// ─── SMM: Balansdan yoki karta orqali to'lash ─────────────────────────────────
+if ($callback_data === "smm_pay_balance") {
+    $st = load_step($chat_id);
+    $som_price  = intval($st['smm_final_price'] ?? 0);
+    $qty        = intval($st['smm_final_qty'] ?? 0);
+    $link       = $st['smm_final_link'] ?? '';
+    $svc_id     = intval($st['smm_service_id'] ?? 0);
+    $svc_name   = $st['smm_service_name'] ?? '';
+    if (!$som_price || !$qty) { answerCallback($callback_id, "❌ Buyurtma topilmadi!", true); exit; }
+
+    $deducted = deduct_balance($chat_id, $som_price, $connect);
+    if (!$deducted) {
+        $bal = get_balance($chat_id, $connect);
+        answerCallback($callback_id, "❌ Balans yetarli emas! (" . number_format($bal) . " so'm)", true); exit;
+    }
+    $new_bal = get_balance($chat_id, $connect);
+    // DB
+    $uid_s = intval($chat_id);
+    $ins_s = mysqli_prepare($connect, "INSERT INTO smm_orders (user_id, service_id, service_name, link, quantity, price, status, payment_order, payment_status) VALUES (?,?,?,?,?,?,'pending','balance_pay','paid')");
+    mysqli_stmt_bind_param($ins_s, 'iissii', $uid_s, $svc_id, $svc_name, $link, $qty, $som_price);
+    mysqli_stmt_execute($ins_s); $rid_s = mysqli_insert_id($connect); mysqli_stmt_close($ins_s);
+    // SMM API
+    $smm_res = smm_api(['action' => 'add', 'service' => $svc_id, 'link' => $link, 'quantity' => $qty]);
+    if ($smm_res && isset($smm_res['order'])) {
+        $smm_oid = intval($smm_res['order']);
+        mysqli_query($connect, "UPDATE smm_orders SET smm_order_id={$smm_oid}, status='Pending' WHERE id={$rid_s}");
+        deleteMessage($chat_id, $message_id);
+        sendMessage($chat_id, "✅ <b>Balansdan to'landi!</b>
+💰 " . number_format($som_price) . " so'm
+💳 Qolgan balans: <b>" . number_format($new_bal) . " so'm</b>
+
+📋 SMM Buyurtma ID: <b>#{$smm_oid}</b>
+⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]]]], JSON_UNESCAPED_UNICODE));
+    } else {
+        add_balance($chat_id, $som_price, $connect);
+        sendMessage($chat_id, "⚠️ SMM API xatolik. Balans qaytarildi.");
+    }
+    clear_step($chat_id);
+    answerCallback($callback_id, "✅ To'landi!", true);
+    exit;
+}
+
+if ($callback_data === "smm_pay_card") {
+    $st = load_step($chat_id);
+    $pay_amount = intval($st['smm_pay_amount'] ?? 0);
+    if (!$pay_amount) { answerCallback($callback_id, "❌ Buyurtma topilmadi!", true); exit; }
+    deleteMessage($chat_id, $message_id);
+    // Karta orqali to'lov yaratish (smm_enter_qty bosqichidan davom etish)
+    $st['step'] = 'smm_card_pay';
+    save_step($chat_id, $st);
+    // Qayta to'lov yaratish
+    $pay_resp2 = $CheckCardPay->create_checkout($pay_amount);
+    $pay_data2 = $pay_resp2 ? json_decode($pay_resp2, true) : null;
+    if (!$pay_data2 || ($pay_data2['status'] ?? '') === 'error') {
+        sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik."); clear_step($chat_id); exit;
+    }
+    $oc2 = $pay_data2['order'] ?? null;
+    $ii2 = $pay_data2['insert_id'] ?? $oc2;
+    $pu2 = $pay_data2['pay_url'] ?? null;
+    if (!$oc2) { sendMessage($chat_id, "⚠️ API xatolik."); clear_step($chat_id); exit; }
+    // DB
+    $uid_c = intval($chat_id);
+    $svc_id_c = intval($st['smm_service_id']); $svc_nm_c = $st['smm_service_name'];
+    $lnk_c = $st['smm_final_link']; $qty_c = intval($st['smm_final_qty']);
+    $prc_c = intval($st['smm_final_price']);
+    $ins_c = mysqli_prepare($connect, "INSERT INTO smm_orders (user_id, service_id, service_name, link, quantity, price, status, payment_order, payment_status) VALUES (?,?,?,?,?,?,'pending',?,'unpaid')");
+    mysqli_stmt_bind_param($ins_c, 'iissiis', $uid_c, $svc_id_c, $svc_nm_c, $lnk_c, $qty_c, $prc_c, $oc2);
+    mysqli_stmt_execute($ins_c); mysqli_stmt_close($ins_c);
+    $kb_c = [];
+    if ($pu2) $kb_c[] = [['text' => "💳 To'lov sahifasini ochish", 'url' => $pu2]];
+    $kb_c[] = [['text' => "♻️ To'lovni tekshirish", 'callback_data' => "smm_check_pay={$oc2}"]];
+    $kb_c[] = [['text' => "❌ Bekor qilish", 'callback_data' => "smm_cancel_pay={$oc2}"]];
+    sendMessage($chat_id, "<b>📱 SMM Buyurtma #{$ii2}</b>
+💳 Karta: <code>5614683582279246</code>
+💵 To'lov miqdori: <b><u>{$pay_amount} so'm</u></b>
+
+⚠️ Aynan shu miqdorni o'tkazing!", json_encode(['inline_keyboard' => $kb_c], JSON_UNESCAPED_UNICODE));
+    clear_step($chat_id);
+    answerCallback($callback_id, "", false);
+    exit;
+}
+
 // ─── SMM: Asosiy menyu ────────────────────────────────────────────────────────
 if ($callback_data === "smm_main") {
     deleteMessage($chat_id, $message_id);
@@ -836,12 +1045,23 @@ if ($callback_data && strpos($callback_data, "smm_svc_") === 0) {
         'smm_cat_idx' => $cat_idx,
     ]);
     $kb = [[['text' => "🔙 Orqaga", 'callback_data' => "smm_cat_{$cat_idx}"]]];
-    sendMessage($chat_id, "<b>📱 " . $svc['name'] . "</b>
-
-📊 Min: <b>" . number_format($svc['min']) . "</b> | Max: <b>" . number_format($svc['max']) . "</b>
-
-🔗 Link kiriting (to'liq URL):
-Masalan: <code>https://t.me/username</code>", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+    // API dan narxni olish va ko'rsatish
+    $smm_cfg_s  = cfg($connect);
+    $usd_rate_s = intval($smm_cfg_s['smm_usd_rate'] ?? 12700);
+    $markup_s   = intval($smm_cfg_s['smm_markup'] ?? 20);
+    $svc_list_s = smm_api(['action' => 'services']);
+    $rate_som_1000 = 0;
+    if ($svc_list_s) {
+        foreach ($svc_list_s as $sv_s) {
+            if (intval($sv_s['service'] ?? 0) == intval($svc['id'])) {
+                $r_usd = floatval($sv_s['rate'] ?? 0);
+                $rate_som_1000 = intval($r_usd * $usd_rate_s * (1 + $markup_s / 100));
+                break;
+            }
+        }
+    }
+    $rate_line = $rate_som_1000 > 0 ? "\n💲 <b>1000 ta narxi: " . number_format($rate_som_1000) . " so'm</b>" : "";
+    sendMessage($chat_id, "<b>📱 " . $svc['name'] . "</b>\n\n📊 Min: <b>" . number_format($svc['min']) . "</b> | Max: <b>" . number_format($svc['max']) . "</b>{$rate_line}\n\n🔗 Link kiriting (to'liq URL):\nMasalan: <code>https://t.me/username</code>", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
     exit;
 }
 
@@ -942,6 +1162,145 @@ if ($callback_data && strpos($callback_data, "smm_cancel_pay=") === 0) {
     deleteMessage($chat_id, $message_id);
     sendMessage($chat_id, "❌ <b>Buyurtma bekor qilindi.</b>", json_encode(['inline_keyboard' => [[['text' => "🔙 SMM Panel", 'callback_data' => "smm_main"]]]], JSON_UNESCAPED_UNICODE));
     answerCallback($callback_id, "Bekor qilindi.", true);
+    exit;
+}
+
+// ─── 💳 Balans tizimi ────────────────────────────────────────────────────────
+if ($callback_data === "wallet_main") {
+    deleteMessage($chat_id, $message_id);
+    $bal = get_balance($chat_id, $connect);
+    $kb = [
+        [['text' => "➕ Balans to'ldirish", 'callback_data' => "wallet_topup"]],
+        [['text' => "📋 To'ldirish tarixi", 'callback_data' => "wallet_history"]],
+        [['text' => "🔙 Orqaga", 'callback_data' => "menu"]],
+    ];
+    sendMessage($chat_id, "<b>💳 Balans</b>
+
+💰 Hozirgi balans: <b>" . number_format($bal) . " so'm</b>
+
+📌 Balansdan foydalanish:
+• Stars va Premium xarid qilish
+• SMM Panel xizmatlari
+• 1000 so'mdan kam buyurtmalarda faqat balansdan to'lov
+
+💡 Minimal to'ldirish: <b>1,000 so'm</b>", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+if ($callback_data === "wallet_topup") {
+    deleteMessage($chat_id, $message_id);
+    save_step($chat_id, ['step' => 'wallet_enter_amount']);
+    $kb = [
+        [['text' => "5,000 so'm", 'callback_data' => "wallet_amount_5000"],  ['text' => "10,000 so'm", 'callback_data' => "wallet_amount_10000"]],
+        [['text' => "25,000 so'm", 'callback_data' => "wallet_amount_25000"], ['text' => "50,000 so'm", 'callback_data' => "wallet_amount_50000"]],
+        [['text' => "🔙 Orqaga", 'callback_data' => "wallet_main"]],
+    ];
+    sendMessage($chat_id, "<b>➕ Balans to'ldirish</b>
+
+💡 Minimal: <b>1,000 so'm</b>
+
+Miqdorni tanlang yoki kiriting:", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+// Tezkor tugmalar
+if ($callback_data && strpos($callback_data, "wallet_amount_") === 0) {
+    $amount_w = intval(str_replace("wallet_amount_", "", $callback_data));
+    deleteMessage($chat_id, $message_id);
+    process_wallet_topup($chat_id, $connect, $amount_w);
+    exit;
+}
+
+if ($callback_data === "wallet_history") {
+    deleteMessage($chat_id, $message_id);
+    $hist = mysqli_query($connect, "SELECT * FROM top_up WHERE user_id={$chat_id} ORDER BY date DESC LIMIT 10");
+    $txt = "<b>📋 To'ldirish tarixi</b>
+
+";
+    $cnt = 0;
+    while ($h = mysqli_fetch_assoc($hist)) {
+        $cnt++;
+        $st_e = $h['status'] === 'paid' ? '✅' : ($h['status'] === 'cancel' ? '❌' : '⏳');
+        $txt .= "{$st_e} " . number_format($h['amount']) . " so'm — " . date('d.m.Y H:i', strtotime($h['date'])) . "
+";
+    }
+    if ($cnt == 0) $txt .= "Hozircha to'ldirish yo'q.";
+    $kb = [[['text' => "🔙 Orqaga", 'callback_data' => "wallet_main"]]];
+    sendMessage($chat_id, $txt, json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+// Balans to'ldirish to'lovini tekshirish
+if ($callback_data && strpos($callback_data, "wallet_check=") === 0) {
+    $order_code_w = str_replace("wallet_check=", "", $callback_data);
+    $top_row = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM top_up WHERE order_code='" . mysqli_real_escape_string($connect, $order_code_w) . "' AND user_id={$chat_id} LIMIT 1"));
+    if (!$top_row || $top_row['status'] === 'paid') {
+        answerCallback($callback_id, $top_row && $top_row['status'] === 'paid' ? "✅ Allaqachon qo'shilgan!" : "❌ Topilmadi!", true);
+        exit;
+    }
+    $raw_w = $CheckCardPay->check_payment($order_code_w);
+    $res_w = $raw_w ? json_decode($raw_w, true) : null;
+    if (!$res_w || ($res_w['status'] ?? '') !== 'success') {
+        answerCallback($callback_id, "⚠️ Tekshirishda xatolik.", true); exit;
+    }
+    $pay_data_w = $res_w['data'] ?? [];
+    $summa_w    = intval($pay_data_w['amount'] ?? 0);
+    $status_w   = $pay_data_w['status'] ?? '';
+
+    if ($status_w === 'paid') {
+        mysqli_query($connect, "UPDATE top_up SET status='paid' WHERE order_code='" . mysqli_real_escape_string($connect, $order_code_w) . "'");
+        add_balance($chat_id, $top_row['amount'], $connect);
+        $new_bal = get_balance($chat_id, $connect);
+        @deleteMessage($chat_id, $message_id);
+        sendMessage($chat_id, "✅ <b>Balansga " . number_format($top_row['amount']) . " so'm qo'shildi!</b>
+
+💰 Hozirgi balans: <b>" . number_format($new_bal) . " so'm</b>", json_encode(['inline_keyboard' => [[['text' => "💳 Balans", 'callback_data' => "wallet_main"]]]], JSON_UNESCAPED_UNICODE));
+        sendMessage($admin, "💳 Balans to'ldirildi
+User: {$chat_id}
+Miqdor: " . number_format($top_row['amount']) . " so'm
+Yangi balans: " . number_format($new_bal) . " so'm");
+        answerCallback($callback_id, "✅ Balans to'ldirildi!", true);
+    } elseif ($status_w === 'pending') {
+        answerCallback($callback_id, "⏳ To'lov hali amalga oshirilmagan.", true);
+    } elseif ($status_w === 'cancel') {
+        mysqli_query($connect, "UPDATE top_up SET status='cancel' WHERE order_code='" . mysqli_real_escape_string($connect, $order_code_w) . "'");
+        deleteMessage($chat_id, $message_id);
+        sendMessage($chat_id, "❌ To'lov bekor qilindi.");
+        answerCallback($callback_id, "Bekor qilindi.", true);
+    } else {
+        answerCallback($callback_id, "⚠️ Holat: {$status_w}", true);
+    }
+    exit;
+}
+
+// Balans to'ldirish bekor qilish
+if ($callback_data && strpos($callback_data, "wallet_cancel=") === 0) {
+    $order_code_wc = str_replace("wallet_cancel=", "", $callback_data);
+    $top_row_c = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM top_up WHERE order_code='" . mysqli_real_escape_string($connect, $order_code_wc) . "' AND status='unpaid' LIMIT 1"));
+    if (!$top_row_c) { answerCallback($callback_id, "❌ Topilmadi!", true); exit; }
+    mysqli_query($connect, "UPDATE top_up SET status='cancel' WHERE order_code='" . mysqli_real_escape_string($connect, $order_code_wc) . "'");
+    $CheckCardPay->cancel_payment($order_code_wc);
+    deleteMessage($chat_id, $message_id);
+    sendMessage($chat_id, "❌ To'ldirish bekor qilindi.", json_encode(['inline_keyboard' => [[['text' => "💳 Balans", 'callback_data' => "wallet_main"]]]], JSON_UNESCAPED_UNICODE));
+    answerCallback($callback_id, "Bekor qilindi.", true);
+    exit;
+}
+
+// ─── Balansdan to'lash ────────────────────────────────────────────────────────
+if ($callback_data && strpos($callback_data, "pay_balance_") === 0) {
+    $pay_type = str_replace("pay_balance_", "", $callback_data);
+    pay_with_balance($chat_id, $connect, $pay_type);
+    exit;
+}
+
+// Karta orqali to'lash
+if ($callback_data && strpos($callback_data, "pay_card_") === 0) {
+    $pay_type = str_replace("pay_card_", "", $callback_data);
+    if ($pay_type === 'stars') {
+        make_stars_payment($chat_id, $connect, $CC);
+    } else {
+        make_premium_payment($chat_id, $connect, $CC);
+    }
     exit;
 }
 
@@ -1190,7 +1549,7 @@ exit;
 }
 $st['receiver'] = '@' . $caller_username;
 save_step($chat_id, $st);
-process_order($chat_id, $connect, $card_number); 
+offer_payment_method($chat_id, $connect, 'stars');
 exit;
 }
 
@@ -1208,7 +1567,7 @@ exit;
 }
 $st['receiver'] = '@' . $caller_username;
 save_step($chat_id, $st);
-process_premium_order($chat_id, $connect, $card_number); 
+offer_payment_method($chat_id, $connect, 'premium');
 exit;
 }
 
@@ -1252,7 +1611,7 @@ exit;
 
 $st['receiver'] = $username_final;
 save_step($chat_id, $st);
-process_order($chat_id, $connect, $card_number); 
+offer_payment_method($chat_id, $connect, 'stars');
 exit;
 }
 
@@ -1280,6 +1639,18 @@ exit;
 }
 
 // ─── SMM: Link va miqdor kiritish ────────────────────────────────────────────
+// Balans to'ldirish miqdor kiritish
+if (!empty($st['step']) && $st['step'] === 'wallet_enter_amount') {
+    if (!is_numeric($text) || intval($text) < 1000) {
+        sendMessage($chat_id, "⚠️ Minimal miqdor <b>1,000 so'm</b>! To'g'ri son kiriting.");
+        exit;
+    }
+    $amount_entered = intval($text);
+    clear_step($chat_id);
+    process_wallet_topup($chat_id, $connect, $amount_entered);
+    exit;
+}
+
 if (!empty($st['step']) && $st['step'] === "smm_enter_link") {
     $link = trim($text);
     if (!filter_var($link, FILTER_VALIDATE_URL)) {
@@ -1311,21 +1682,98 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
     }
     // Narxni SMM API dan olish
     $smm_services_list = smm_api(['action' => 'services']);
-    $svc_rate = 0;
+    $svc_rate_usd = 0; // USD per 1000 ta
     if ($smm_services_list) {
         foreach ($smm_services_list as $sv) {
             if (intval($sv['service'] ?? 0) == intval($st['smm_service_id'])) {
-                $svc_rate = floatval($sv['rate'] ?? 0); // USD per 1000
+                $svc_rate_usd = floatval($sv['rate'] ?? 0); // USD per 1000 ta
                 break;
             }
         }
     }
-    // USD → so'm (taxminiy kurs: 1 USD = 12700 so'm)
-    $usd_price = ($svc_rate * $qty) / 1000;
-    $som_price = intval($usd_price * 12700);
-    $som_price = max($som_price, 500); // Minimum 500 so'm
-    $rand_num = rand(1, 99);
-    $pay_amount = $som_price + $rand_num;
+    // Narx hisoblash:
+    // API rate = USD per 1000 ta
+    // Hujjatda ko'rsatilgan narx = 1000 tasi uchun so'm
+    // Formulasi: (rate_usd_per_1000 * qty / 1000) * usd_kurs * (1 + markup%)
+    $smm_cfg      = cfg($connect);
+    $usd_rate     = intval($smm_cfg['smm_usd_rate'] ?? 12700); // 1 USD = X so'm
+    $markup_pct   = intval($smm_cfg['smm_markup'] ?? 20);       // foiz qo'shimcha
+    $base_som     = ($svc_rate_usd * $qty / 1000) * $usd_rate;  // asosiy narx so'mda
+    $markup_som   = $base_som * $markup_pct / 100;              // qo'shimcha foiz
+    $som_price    = intval($base_som + $markup_som);
+    $som_price    = max($som_price, 500); // Minimum 500 so'm
+    $rand_num     = rand(1, 99);
+    $pay_amount   = $som_price + $rand_num;
+    
+    // Foydalanuvchiga narx tafsilotlari
+    $rate_per_1000_som = intval($svc_rate_usd * $usd_rate); // 1000 tasi uchun so'm (bazaviy)
+    $rate_per_1_som    = round($svc_rate_usd * $usd_rate / 1000, 2); // 1 tasi uchun so'm
+
+    // Balans tekshirish
+    $user_bal = get_balance($chat_id, $connect);
+    if ($som_price < 1000) {
+        // 1000 dan kam — faqat balansdan
+        if ($user_bal >= $som_price) {
+            $deducted_smm = deduct_balance($chat_id, $som_price, $connect);
+            if ($deducted_smm) {
+                $new_bal_smm = get_balance($chat_id, $connect);
+                // DB ga saqlash
+                $smm_uid2 = intval($chat_id); $smm_svc_id2 = intval($st['smm_service_id']);
+                $smm_svc_name2 = $st['smm_service_name']; $smm_link2 = $st['smm_link'];
+                $smm_qty2 = intval($qty); $smm_price2 = intval($som_price);
+                $ins_smm2 = mysqli_prepare($connect, "INSERT INTO smm_orders (user_id, service_id, service_name, link, quantity, price, status, payment_order, payment_status) VALUES (?,?,?,?,?,?,'pending','balance_pay','paid')");
+                mysqli_stmt_bind_param($ins_smm2, 'iissii', $smm_uid2, $smm_svc_id2, $smm_svc_name2, $smm_link2, $smm_qty2, $smm_price2);
+                mysqli_stmt_execute($ins_smm2); $rid_smm = mysqli_insert_id($connect); mysqli_stmt_close($ins_smm2);
+                // SMM API ga yuborish
+                $smm_result2 = smm_api(['action' => 'add', 'service' => $st['smm_service_id'], 'link' => $st['smm_link'], 'quantity' => $qty]);
+                if ($smm_result2 && isset($smm_result2['order'])) {
+                    $smm_oid2 = intval($smm_result2['order']);
+                    mysqli_query($connect, "UPDATE smm_orders SET smm_order_id={$smm_oid2}, status='Pending' WHERE id={$rid_smm}");
+                    sendMessage($chat_id, "✅ <b>Balansdan to'landi!</b>
+💰 " . number_format($som_price) . " so'm
+💳 Qolgan balans: <b>" . number_format($new_bal_smm) . " so'm</b>
+
+📋 SMM Buyurtma ID: <b>#{$smm_oid2}</b>
+⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]]]], JSON_UNESCAPED_UNICODE));
+                } else {
+                    add_balance($chat_id, $som_price, $connect);
+                    sendMessage($chat_id, "⚠️ SMM API xatolik. Balans qaytarildi. Admin bilan bog'laning.");
+                }
+                clear_step($chat_id); exit;
+            }
+        } else {
+            $needed_bal = $som_price - $user_bal;
+            sendMessage($chat_id, "⚠️ <b>1,000 so'mdan past buyurtmalar faqat balansdan to'lanadi!</b>
+
+💰 Kerakli: " . number_format($som_price) . " so'm
+💳 Balans: " . number_format($user_bal) . " so'm
+
+❗ Balansni <b>" . number_format($needed_bal) . " so'm</b> ga to'ldiring.", json_encode(['inline_keyboard' => [[['text' => "➕ Balansni to'ldirish", 'callback_data' => "wallet_topup"]]]], JSON_UNESCAPED_UNICODE));
+            clear_step($chat_id); exit;
+        }
+    }
+
+    // 1000 so'm va undan yuqori — tanlash
+    if ($user_bal >= $som_price) {
+        $kb_smm_pay = [
+            [['text' => "💳 Balansdan (" . number_format($user_bal) . " so'm)", 'callback_data' => "smm_pay_balance"]],
+            [['text' => "🏦 Karta orqali", 'callback_data' => "smm_pay_card"]],
+            [['text' => "🔙 Bekor qilish", 'callback_data' => "smm_main"]],
+        ];
+        sendMessage($chat_id, "<b>💳 To'lov usulini tanlang</b>
+
+📱 " . mb_substr($smm_svc_name, 0, 40) . "
+💰 Narxi: <b>" . number_format($som_price) . " so'm</b>
+💳 Balansingiz: <b>" . number_format($user_bal) . " so'm</b>", json_encode(['inline_keyboard' => $kb_smm_pay], JSON_UNESCAPED_UNICODE));
+        // step ni saqlash
+        $st['smm_final_price'] = $som_price;
+        $st['smm_final_qty']   = $qty;
+        $st['smm_final_link']  = $st['smm_link'];
+        $st['smm_pay_amount']  = $pay_amount;
+        $st['step'] = 'smm_choose_pay';
+        save_step($chat_id, $st);
+        exit;
+    }
 
     // CheckCard orqali to'lov yaratish
     $pay_resp = $CheckCardPay->create_checkout($pay_amount);
@@ -1378,6 +1826,8 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
 └ 📌 Xizmat: " . mb_substr($smm_svc_name, 0, 50) . "
 └ 🔗 Link: <code>{$smm_link}</code>
 └ 🔢 Miqdor: " . number_format($qty) . "
+└ 💲 1000 ta narxi: " . number_format($rate_per_1000_som) . " so'm
+└ 💰 Jami narx: " . number_format($som_price) . " so'm
 
 💳 Karta: <code>5614683582279246</code>
 💵 To'lov miqdori: <b><u>{$pay_amount} so'm</u></b>
@@ -1499,6 +1949,38 @@ sendMessage($chat_id, "⚠️ Iltimos to'g'ri raqam kiriting!");
 }
 exit;
 }
+
+if (!empty($st['step']) && $st['step'] === 'edit_smm_markup') {
+if (is_numeric($text) && intval($text) >= 0 && intval($text) <= 500) {
+$val = intval($text);
+$stmt = mysqli_prepare($connect, "UPDATE settings SET smm_markup = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt, 'i', $val);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+sendMessage($chat_id, "✅ SMM Panel markup <b>{$val}%</b> ga o'zgartirildi!
+
+Endi barcha SMM xizmatlari narxiga +{$val}% qo'shimcha qo'shiladi.");
+clear_step($chat_id);
+} else {
+sendMessage($chat_id, "⚠️ 0 dan 500 gacha son kiriting!");
+}
+exit;
+}
+
+if (!empty($st['step']) && $st['step'] === 'edit_smm_rate') {
+if (is_numeric($text) && intval($text) >= 1000) {
+$val = intval($text);
+$stmt = mysqli_prepare($connect, "UPDATE settings SET smm_usd_rate = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt, 'i', $val);
+mysqli_stmt_execute($stmt);
+mysqli_stmt_close($stmt);
+sendMessage($chat_id, "✅ USD kursi <b>{$val} so'm</b> ga o'zgartirildi!");
+clear_step($chat_id);
+} else {
+sendMessage($chat_id, "⚠️ Kamida 1000 so'm bo'lishi kerak!");
+}
+exit;
+}
 }
 }
 
@@ -1560,6 +2042,151 @@ deleteMessage($chat_id, $message_id);
 sendMessage($row['user_id'], "❌ <b>{$row['price']} so'mlik to'lov bekor qilindi!</b>\n\n🎯 Premium: <b>{$row['quantity']} oy</b>\n👤 Qabul qiluvchi: <b>{$row['username']}</b>");
 answerCallback($callback_id, "To'lov bekor qilindi.", true);
 exit;
+}
+
+// ─── To'lov usulini tanlash ───────────────────────────────────────────────────
+function offer_payment_method($chat_id, $connect, $type) {
+    $st = load_step($chat_id);
+    
+    // Narxni hisoblash
+    if ($type === 'stars') {
+        $stars    = intval($st['stars'] ?? 0);
+        $base_som = $stars * cfg($connect)['star_price'];
+    } else {
+        $base_som = intval($st['price'] ?? 0);
+    }
+    
+    $bal = get_balance($chat_id, $connect);
+    
+    // 1000 so'mdan kam bo'lsa faqat balansdan to'lash
+    if ($base_som < 1000) {
+        if ($bal >= $base_som) {
+            // Balansdan avtomatik to'lash
+            pay_with_balance($chat_id, $connect, $type);
+        } else {
+            $needed = $base_som - $bal;
+            sendMessage($chat_id, "⚠️ <b>1,000 so'mdan past buyurtmalar faqat balansdan to'lanadi!</b>
+
+💰 Kerakli: " . number_format($base_som) . " so'm
+💳 Balansingiz: " . number_format($bal) . " so'm
+
+❗ Balansni kamida <b>" . number_format($needed) . " so'm</b> ga to'ldiring.", json_encode(['inline_keyboard' => [
+                [['text' => "➕ Balansni to'ldirish", 'callback_data' => "wallet_topup"]],
+                [['text' => "🔙 Orqaga", 'callback_data' => "menu"]],
+            ]], JSON_UNESCAPED_UNICODE));
+        }
+        return;
+    }
+    
+    // 1000 so'm va undan yuqori — tanlash imkoniyati
+    $kb_pay = [];
+    if ($bal >= $base_som) {
+        $kb_pay[] = [['text' => "💳 Balansdan to'lash (" . number_format($bal) . " so'm)", 'callback_data' => "pay_balance_{$type}"]];
+    } elseif ($bal > 0) {
+        $kb_pay[] = [['text' => "💳 Balansdan to'lash (yetarli emas: " . number_format($bal) . " so'm)", 'callback_data' => "wallet_topup"]];
+    }
+    $kb_pay[] = [['text' => "🏦 Karta orqali to'lash", 'callback_data' => "pay_card_{$type}"]];
+    $kb_pay[] = [['text' => "🔙 Orqaga", 'callback_data' => "menu"]];
+    
+    $type_txt = $type === 'stars' ? "⭐ Stars" : "👑 Premium";
+    sendMessage($chat_id, "<b>💳 To'lov usulini tanlang</b>
+
+{$type_txt}
+💰 Narxi: <b>" . number_format($base_som) . " so'm</b>
+
+💳 Balansingiz: <b>" . number_format($bal) . " so'm</b>", json_encode(['inline_keyboard' => $kb_pay], JSON_UNESCAPED_UNICODE));
+}
+
+function pay_with_balance($chat_id, $connect, $type) {
+    $st = load_step($chat_id);
+    if ($type === 'stars') {
+        $stars    = intval($st['stars'] ?? 0);
+        $receiver = $st['receiver'] ?? '';
+        $amount   = $stars * cfg($connect)['star_price'];
+    } else {
+        $months   = intval($st['months'] ?? 0);
+        $receiver = $st['receiver'] ?? '';
+        $amount   = intval($st['price'] ?? 0);
+    }
+    
+    // Balansdan ayirish
+    $deducted = deduct_balance($chat_id, $amount, $connect);
+    if (!$deducted) {
+        $bal = get_balance($chat_id, $connect);
+        sendMessage($chat_id, "❌ <b>Balans yetarli emas!</b>
+
+💰 Kerakli: " . number_format($amount) . " so'm
+💳 Balans: " . number_format($bal) . " so'm", json_encode(['inline_keyboard' => [[['text' => "➕ Balansni to'ldirish", 'callback_data' => "wallet_topup"]]]], JSON_UNESCAPED_UNICODE));
+        return;
+    }
+    
+    $new_bal = get_balance($chat_id, $connect);
+    
+    // DB ga saqlash va xizmat yuborish
+    if ($type === 'stars') {
+        $uid = intval($chat_id);
+        $stmt = mysqli_prepare($connect, "INSERT INTO review (user_id, order_id, price, status, quantity, username, payment_method) VALUES (?,?,?,'paid',?,?,'balance')");
+        $oid = 'BAL_' . time();
+        mysqli_stmt_bind_param($stmt, 'isiis', $uid, $oid, $amount, $stars, $receiver);
+        mysqli_stmt_execute($stmt); mysqli_stmt_close($stmt);
+        $rid = mysqli_insert_id($connect);
+        
+        sendMessage($chat_id, "✅ <b>Balansdan to'landi!</b>
+💰 " . number_format($amount) . " so'm
+💳 Qolgan balans: <b>" . number_format($new_bal) . " so'm</b>
+
+📦 Xizmat bajarilmoqda...");
+        
+        // Stars API
+        $api_url = "https://domen.uz/stars.php?username=" . urlencode($receiver) . "&starssoni=" . urlencode($stars);
+        $ch_a = curl_init($api_url); curl_setopt($ch_a, CURLOPT_RETURNTRANSFER, true);
+        $api_resp = curl_exec($ch_a); $http_code = curl_getinfo($ch_a, CURLINFO_HTTP_CODE); curl_close($ch_a);
+        $delivered = ($api_resp !== false && $http_code >= 200 && $http_code < 300);
+        
+        if ($delivered) {
+            $upd = mysqli_prepare($connect, "UPDATE review SET status='completed' WHERE id=? LIMIT 1");
+            mysqli_stmt_bind_param($upd, 'i', $rid); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
+            sendMessage($chat_id, "⭐️ <b>{$stars} stars muvaffaqiyatli yuborildi: {$receiver}</b>
+🎉 Rahmat!");
+        } else {
+            add_balance($chat_id, $amount, $connect); // qaytarish
+            $upd = mysqli_prepare($connect, "UPDATE review SET status='failed_delivery' WHERE id=? LIMIT 1");
+            mysqli_stmt_bind_param($upd, 'i', $rid); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
+            sendMessage($chat_id, "⚠️ Xizmat yuborishda muammo. Balans qaytarildi. Admin bilan bog'laning.");
+        }
+    } else {
+        $uid = intval($chat_id);
+        $stmt = mysqli_prepare($connect, "INSERT INTO premium_orders (user_id, order_id, price, status, quantity, username, payment_method) VALUES (?,?,?,'paid',?,?,'balance')");
+        $oid = 'BAL_' . time();
+        mysqli_stmt_bind_param($stmt, 'isiis', $uid, $oid, $amount, $months, $receiver);
+        mysqli_stmt_execute($stmt); mysqli_stmt_close($stmt);
+        $rid = mysqli_insert_id($connect);
+        
+        sendMessage($chat_id, "✅ <b>Balansdan to'landi!</b>
+💰 " . number_format($amount) . " so'm
+💳 Qolgan balans: <b>" . number_format($new_bal) . " so'm</b>
+
+📦 Xizmat bajarilmoqda...");
+        
+        // Premium API
+        $api_url = "https://domen.uz/premium.php?username=" . urlencode($receiver) . "&premiumoyi=" . urlencode($months);
+        $ch_a = curl_init($api_url); curl_setopt($ch_a, CURLOPT_RETURNTRANSFER, true);
+        $api_resp = curl_exec($ch_a); $http_code = curl_getinfo($ch_a, CURLINFO_HTTP_CODE); curl_close($ch_a);
+        $delivered = ($api_resp !== false && $http_code >= 200 && $http_code < 300);
+        
+        if ($delivered) {
+            $upd = mysqli_prepare($connect, "UPDATE premium_orders SET status='completed' WHERE id=? LIMIT 1");
+            mysqli_stmt_bind_param($upd, 'i', $rid); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
+            sendMessage($chat_id, "👑 <b>{$months} oylik Premium muvaffaqiyatli yuborildi: {$receiver}</b>
+🎉 Rahmat!");
+        } else {
+            add_balance($chat_id, $amount, $connect); // qaytarish
+            $upd = mysqli_prepare($connect, "UPDATE premium_orders SET status='failed_delivery' WHERE id=? LIMIT 1");
+            mysqli_stmt_bind_param($upd, 'i', $rid); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
+            sendMessage($chat_id, "⚠️ Xizmat yuborishda muammo. Balans qaytarildi. Admin bilan bog'laning.");
+        }
+    }
+    clear_step($chat_id);
 }
 
 function process_order($chat_id, $connect, $card_number) {
