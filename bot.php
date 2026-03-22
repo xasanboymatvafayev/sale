@@ -10,9 +10,10 @@ define("DB_USERNAME", "root");
 define("DB_PASSWORD", "SngtdKxJGJMafHfetMzLBszTQwMprNwi");
 define("DB_NAME", "railway");
 define("DB_PORT", 57444);
-define('CHECKCARD_SHOP_ID', 'SIZNING_SHOP_ID');   // @CheckCardUz_bot dan olingan shop id
-define('CHECKCARD_SHOP_KEY', 'SIZNING_SHOP_KEY'); // @CheckCardUz_bot dan olingan shop key
+define('CHECKCARD_SHOP_ID', '647282');   // @CheckCardUz_bot dan olingan shop id
+define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
+define('ISBOT_CHANNEL', '@Nitesms_isbotlar');   // Isbot kanali (muvaffaqiyatli buyurtmalar)
 define('SMM_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz dan olingan API key
 define('SMM_API_URL', 'https://super-sim.uz/api/v2');
 define('NUMBER_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz number API key
@@ -247,6 +248,9 @@ if (!in_array("smm_last_check", $existing_cols)) {
 }
 if (!in_array("number_markup", $existing_cols)) {
     mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `number_markup` INT DEFAULT 20");
+}
+if (!in_array("isbot_channel", $existing_cols)) {
+    mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `isbot_channel` VARCHAR(100) DEFAULT NULL");
 }
 
 $checkSettings = mysqli_query($connect, "SELECT COUNT(*) as total FROM settings");
@@ -667,6 +671,7 @@ $reply = json_encode(['inline_keyboard' => [
 [['text' => "📱 SMM Markup: {$smm_markup_now}%", 'callback_data' => "edit_smm_markup"]],
 [['text' => "🔔 SMM ogohlantirish: \${$smm_balance_alert_now}", 'callback_data' => "edit_smm_alert"]],
 [['text' => "📞 Nomer markup: {$number_markup_now}%", 'callback_data' => "edit_number_markup"]],
+[['text' => "📢 Isbot kanali: " . ($smm_cfg_p['isbot_channel'] ?? ISBOT_CHANNEL), 'callback_data' => "edit_isbot_channel"]],
 
 [['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]
 ]], JSON_UNESCAPED_UNICODE);
@@ -756,6 +761,17 @@ if ($callback_data === "edit_premium_12" && $from_id == $admin) {
 save_step($chat_id, ['step' => 'edit_premium_12']);
 sendMessage($chat_id, "👑 Premium 12 oy narxini kiriting (so'm):");
 exit;
+}
+
+if ($callback_data === "edit_isbot_channel" && $from_id == $admin) {
+    save_step($chat_id, ['step' => 'edit_isbot_channel']);
+    $cur_ch = settings($connect)['isbot_channel'] ?? ISBOT_CHANNEL;
+    sendMessage($chat_id, "📢 <b>Isbot kanali</b>
+
+Hozirgi: <b>{$cur_ch}</b>
+
+Yangi kanal username kiriting (@username):");
+    exit;
 }
 
 if ($callback_data === "edit_number_markup" && $from_id == $admin) {
@@ -934,7 +950,116 @@ function smm_categories() {
             ["id" => 315, "name" => "↪️ Ulashish",                         "min" => 10,   "max" => 217545811],
         ],
     ];
-}// ─── Balans to'ldirish funksiyasi ────────────────────────────────────────────
+}// ─── Isbot kanaliga yuborish funksiyasi ──────────────────────────────────────
+function send_isbot($type, $data) {
+    global $connect;
+    // DB dan isbot kanal olish, bo'lmasa default
+    $isbot_ch = null;
+    if ($connect) {
+        $row_ch = mysqli_fetch_assoc(mysqli_query($connect, "SELECT isbot_channel FROM settings WHERE id=1 LIMIT 1"));
+        $isbot_ch = $row_ch['isbot_channel'] ?? null;
+    }
+    $channel = (!empty($isbot_ch)) ? $isbot_ch : (defined('ISBOT_CHANNEL') ? ISBOT_CHANNEL : null);
+    if (empty($channel)) return;
+    $date    = date('d.m.Y H:i');
+    
+    if ($type === 'stars') {
+        $username = $data['username'] ?? '';
+        $qty      = $data['qty'] ?? 0;
+        $price    = $data['price'] ?? 0;
+        $user_id  = $data['user_id'] ?? '';
+        $order_id = $data['order_id'] ?? '';
+        $method   = $data['method'] === 'balance' ? '💳 Balans' : '🏦 Karta';
+        
+        $msg = "✅ <b>Stars buyurtma bajarildi!</b>
+
+"
+             . "⭐️ Miqdor: <b>{$qty} Stars</b>
+"
+             . "👤 Qabul qiluvchi: <b>{$username}</b>
+"
+             . "💰 To'langan: <b>" . number_format($price, 0, '.', ' ') . " so'm</b>
+"
+             . "💳 To'lov usuli: {$method}
+"
+             . "📋 Buyurtma: #{$order_id}
+"
+             . "🕐 Sana: {$date}";
+             
+    } elseif ($type === 'premium') {
+        $username = $data['username'] ?? '';
+        $months   = $data['months'] ?? 0;
+        $price    = $data['price'] ?? 0;
+        $user_id  = $data['user_id'] ?? '';
+        $order_id = $data['order_id'] ?? '';
+        $method   = $data['method'] === 'balance' ? '💳 Balans' : '🏦 Karta';
+        
+        $msg = "✅ <b>Premium buyurtma bajarildi!</b>
+
+"
+             . "👑 Muddat: <b>{$months} oy</b>
+"
+             . "👤 Qabul qiluvchi: <b>{$username}</b>
+"
+             . "💰 To'langan: <b>" . number_format($price, 0, '.', ' ') . " so'm</b>
+"
+             . "💳 To'lov usuli: {$method}
+"
+             . "📋 Buyurtma: #{$order_id}
+"
+             . "🕐 Sana: {$date}";
+             
+    } elseif ($type === 'smm') {
+        $svc_name = $data['service'] ?? '';
+        $qty      = $data['qty'] ?? 0;
+        $price    = $data['price'] ?? 0;
+        $link     = $data['link'] ?? '';
+        $order_id = $data['order_id'] ?? '';
+        $method   = $data['method'] === 'balance' ? '💳 Balans' : '🏦 Karta';
+        
+        $msg = "✅ <b>SMM buyurtma qabul qilindi!</b>
+
+"
+             . "📌 Xizmat: <b>{$svc_name}</b>
+"
+             . "🔢 Miqdor: <b>" . number_format($qty, 0, '.', ' ') . "</b>
+"
+             . "🔗 Link: <code>{$link}</code>
+"
+             . "💰 To'langan: <b>" . number_format($price, 0, '.', ' ') . " so'm</b>
+"
+             . "💳 To'lov usuli: {$method}
+"
+             . "📋 Buyurtma: #{$order_id}
+"
+             . "🕐 Sana: {$date}";
+             
+    } elseif ($type === 'number') {
+        $phone    = $data['phone'] ?? '';
+        $country  = $data['country'] ?? '';
+        $price    = $data['price'] ?? 0;
+        $user_id  = $data['user_id'] ?? '';
+        
+        $msg = "✅ <b>Virtual nomer sotildi!</b>
+
+"
+             . "📞 Raqam: <b>{$phone}</b>
+"
+             . "🌍 Davlat: <b>{$country}</b>
+"
+             . "💰 To'langan: <b>" . number_format($price, 0, '.', ' ') . " so'm</b>
+"
+             . "💳 To'lov usuli: 💳 Balans
+"
+             . "🕐 Sana: {$date}";
+    } else {
+        return;
+    }
+    
+    sendMessage($channel, $msg);
+}
+
+// ─── Balans to'ldirish funksiyasi ────────────────────────────────────────────
 function process_wallet_topup($chat_id, $connect, $amount) {
     global $CheckCardPay, $stars_card;
     if ($amount < 1000) {
@@ -1025,6 +1150,7 @@ if ($callback_data === "smm_pay_balance") {
 
 📋 SMM Buyurtma ID: <b>#{$smm_oid}</b>
 ⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]]]], JSON_UNESCAPED_UNICODE));
+        send_isbot('smm', ['service' => $svc_name, 'qty' => $qty, 'price' => $som_price, 'link' => $link, 'order_id' => $smm_oid, 'method' => 'balance']);
     } else {
         add_balance($chat_id, $som_price, $connect);
         $smm_err1 = $smm_res['error'] ?? json_encode($smm_res);
@@ -1279,25 +1405,33 @@ if ($callback_data && strpos($callback_data, "smm_cancel_pay=") === 0) {
 // ─── 📞 Virtual Nomer tizimi ─────────────────────────────────────────────────
 function number_api($action, $params = []) {
     if (NUMBER_API_KEY === 'SIZNING_NUMBER_API_KEY') {
-        return ['error' => 'Number API key ornatilmagan! @SuperSim_Bot dan oling.'];
+        return ['error' => 'Number API key ornatilmagan! super-sim.uz saytidan oling.'];
     }
     $url = NUMBER_API_URL . '?action=' . $action . '&key=' . NUMBER_API_KEY;
     foreach ($params as $k => $v) {
         $url .= '&' . $k . '=' . urlencode($v);
     }
-    $ctx = stream_context_create(['http' => ['timeout' => 15], 'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]);
-    $res = @file_get_contents($url, false, $ctx);
-    if ($res === false) {
-        // curl bilan ham sinab ko'rish
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => 1, CURLOPT_SSL_VERIFYPEER => 0, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => 1]);
-        $res = curl_exec($ch);
-        $curl_err = curl_error($ch);
-        curl_close($ch);
-        if (!$res) return ['error' => 'Ulanish xatoligi: ' . $curl_err];
-    }
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_TIMEOUT        => 30,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER     => ['Accept: application/json', 'User-Agent: TelegramBot/1.0'],
+    ]);
+    $res = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_err  = curl_error($ch);
+    curl_close($ch);
+    if ($curl_err) return ['error' => 'Ulanish xatoligi: ' . $curl_err];
+    if ($http_code !== 200) return ['error' => "HTTP xatolik: {$http_code}"];
+    if (!$res) return ['error' => 'Bosh javob'];
     $decoded = json_decode($res, true);
-    return $decoded ?: ['error' => 'Javob xatoligi: ' . substr($res, 0, 100)];
+    if (!$decoded) return ['error' => 'JSON xatoligi: ' . substr($res, 0, 100)];
+    return $decoded;
 }
 
 // number_main — asosiy sahifa + davlatlar ro'yxati
@@ -1449,6 +1583,7 @@ Raqamni Telegram ilovasiga kiriting va SMS kodni oling.
 
 ⚠️ 2-bosqichli parolni 1.5 kundan keyin qo'ying!",
         json_encode(['inline_keyboard' => $kb_sms], JSON_UNESCAPED_UNICODE));
+    send_isbot('number', ['phone' => $phone_n, 'country' => '', 'price' => $price_c, 'user_id' => $chat_id]);
     exit;
 }
 
@@ -2310,6 +2445,19 @@ sendMessage($chat_id, "⚠️ Iltimos to'g'ri raqam kiriting!");
 exit;
 }
 
+if (!empty($st['step']) && $st['step'] === 'edit_isbot_channel') {
+$val_ch = trim($text);
+if (strpos($val_ch, '@') !== 0) $val_ch = '@' . $val_ch;
+$stmt_ch = mysqli_prepare($connect, "UPDATE settings SET isbot_channel = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt_ch, 's', $val_ch);
+mysqli_stmt_execute($stmt_ch); mysqli_stmt_close($stmt_ch);
+sendMessage($chat_id, "✅ Isbot kanali <b>{$val_ch}</b> ga ozgartirildi!
+
+Endi barcha muvaffaqiyatli buyurtmalar shu kanalga yuboriladi.");
+clear_step($chat_id);
+exit;
+}
+
 if (!empty($st['step']) && $st['step'] === 'edit_number_markup') {
 if (is_numeric($text) && intval($text) >= 0 && intval($text) <= 500) {
 $val_nm = intval($text);
@@ -2527,6 +2675,7 @@ function pay_with_balance($chat_id, $connect, $type) {
             $upd = mysqli_prepare($connect, "UPDATE review SET status='completed' WHERE id=? LIMIT 1");
             mysqli_stmt_bind_param($upd, 'i', $rid); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
             sendMessage($chat_id, "⭐️ <b>{$stars} stars muvaffaqiyatli yuborildi: {$receiver}</b>
+            send_isbot('stars', ['username' => $receiver, 'qty' => $stars, 'price' => $amount, 'user_id' => $chat_id, 'order_id' => $rid, 'method' => 'balance']);
 🎉 Rahmat!");
         } else {
             add_balance($chat_id, $amount, $connect); // qaytarish
@@ -2558,6 +2707,7 @@ function pay_with_balance($chat_id, $connect, $type) {
             $upd = mysqli_prepare($connect, "UPDATE premium_orders SET status='completed' WHERE id=? LIMIT 1");
             mysqli_stmt_bind_param($upd, 'i', $rid); mysqli_stmt_execute($upd); mysqli_stmt_close($upd);
             sendMessage($chat_id, "👑 <b>{$months} oylik Premium muvaffaqiyatli yuborildi: {$receiver}</b>
+            send_isbot('premium', ['username' => $receiver, 'months' => $months, 'price' => $amount, 'user_id' => $chat_id, 'order_id' => $rid, 'method' => 'balance']);
 🎉 Rahmat!");
         } else {
             add_balance($chat_id, $amount, $connect); // qaytarish
@@ -2823,6 +2973,7 @@ mysqli_stmt_execute($stmt);
 mysqli_stmt_close($stmt);
 
 sendMessage($from_id, "<b>⭐️ {$quantity} stars muvaffaqiyatli yuborildi: {$username_target}\n🎉 Rahmat!</b>");
+send_isbot('stars', ['username' => $username_target, 'qty' => $quantity, 'price' => $row['price'], 'user_id' => $from_id, 'order_id' => $review_id, 'method' => 'card']);
 } else {
 $errText = "<b>⚠️ Stars yetkazishda xatolik yuz berdi.\nOrderCode: {$order_code}\nFoydalanuvchi: {$from_id}\nUsername: {$username_target}\nStars: {$quantity}\nAPI_http_code: {$http_code}\nAPI_resp: " . htmlspecialchars(substr($api_resp ?? '', 0, 1000)) . "</b>";
 sendMessage($from_id, "<b>⚠️ To'lov qabul qilindi, lekin stars yetkazishda muammo yuz berdi. Admin bilan bog'laning yoki keyin qayta tekshiring.</b>");
@@ -2932,6 +3083,7 @@ mysqli_stmt_bind_param($stmt, 'i', $review_id);
 mysqli_stmt_execute($stmt);
 mysqli_stmt_close($stmt);
 sendMessage($from_id, "<b>👑 {$quantity} oylik Premium muvaffaqiyatli yuborildi: {$username_target}\n🎉 Rahmat!</b>");
+send_isbot('premium', ['username' => $username_target, 'months' => $quantity, 'price' => $row['price'], 'user_id' => $from_id, 'order_id' => $review_id, 'method' => 'card']);
 } else {
 $errText = "<b>⚠️ Premium yetkazishda xatolik yuz berdi.\nOrderCode: {$order_code}\nFoydalanuvchi: {$from_id}\nUsername: {$username_target}\nPremium: {$quantity} oy\nAPI_http_code: {$http_code}\nAPI_resp: " . htmlspecialchars(substr($api_resp ?? '', 0, 1000)) . "</b>";
 sendMessage($from_id, "<b>⚠️ To'lov qabul qilindi, lekin Premium yetkazishda muammo yuz berdi. Admin bilan bog'laning yoki keyin qayta tekshiring.</b>");
