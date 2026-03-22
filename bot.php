@@ -700,64 +700,63 @@ function smm_api($params) {
 // SMM kategoriyalari (xizmat ID → kategoriya)
 function smm_categories() {
     return [
-        '⭐ Telegram Stars' => [
-            ['id' => 108, 'name' => '⭐ Stars (Profil uchun) ⚡️ Tezkor', 'min' => 50, 'max' => 1000000],
-            ['id' => 89,  'name' => '⭐ Stars (Post uchun) ⚡️ Tezkor',   'min' => 5,  'max' => 10000],
+        "⭐ Telegram Stars" => [
+            ["id" => 108, "name" => "⭐ Stars (Profil uchun) ⚡ Tezkor", "min" => 50,  "max" => 1000000],
+            ["id" => 89,  "name" => "⭐ Stars (Post uchun) ⚡ Tezkor",   "min" => 5,   "max" => 10000],
         ],
-        '👑 Telegram Premium Obunachi' => [
-            ['id' => 458, 'name' => '🌟 Premium Obunachi (5 Kunlik) 🔥',   'min' => 100, 'max' => 10000],
-            ['id' => 459, 'name' => '🌟 Premium Obunachi (15 Kunlik) 🔥',  'min' => 500, 'max' => 10000],
-            ['id' => 460, 'name' => '🌟 Premium Obunachi (20 Kunlik) 🔥',  'min' => 500, 'max' => 10000],
-            ['id' => 461, 'name' => '🌟 Premium Obunachi (30 Kunlik) 🔥',  'min' => 500, 'max' => 10000],
-            ['id' => 462, 'name' => '🌟 Premium Obunachi (40 Kunlik) 🔥',  'min' => 500, 'max' => 10000],
-            ['id' => 463, 'name' => '🌟 Premium Obunachi (60 Kunlik) 🔥',  'min' => 500, 'max' => 10000],
-            ['id' => 464, 'name' => '🌟 Premium Obunachi (90 Kunlik) 🔥',  'min' => 500, 'max' => 10000],
+        "👑 Telegram Premium Obunachi" => [
+            ["id" => 458, "name" => "🌟 Premium Obunachi (5 Kunlik) 🔥",  "min" => 100, "max" => 10000],
+            ["id" => 459, "name" => "🌟 Premium Obunachi (15 Kunlik) 🔥", "min" => 500, "max" => 10000],
+            ["id" => 460, "name" => "🌟 Premium Obunachi (20 Kunlik) 🔥", "min" => 500, "max" => 10000],
+            ["id" => 461, "name" => "🌟 Premium Obunachi (30 Kunlik) 🔥", "min" => 500, "max" => 10000],
+            ["id" => 462, "name" => "🌟 Premium Obunachi (40 Kunlik) 🔥", "min" => 500, "max" => 10000],
+            ["id" => 463, "name" => "🌟 Premium Obunachi (60 Kunlik) 🔥", "min" => 500, "max" => 10000],
+            ["id" => 464, "name" => "🌟 Premium Obunachi (90 Kunlik) 🔥", "min" => 500, "max" => 10000],
         ],
-        '👥 Telegram Obunachilar' => [
-            ['id' => 22,  'name' => '👫 TG Obunachi (30 Kun kafolat)',     'min' => 10,  'max' => 1000000],
-            ['id' => 23,  'name' => '👫 TG Obunachi (60 Kun kafolat)',     'min' => 10,  'max' => 1000000],
-            ['id' => 24,  'name' => '👫 TG Obunachi (90 Kun kafolat)',     'min' => 10,  'max' => 1000000],
-            ['id' => 26,  'name' => '👫 TG Obunachi (365 Kun kafolat)',    'min' => 10,  'max' => 1000000],
-            ['id' => 97,  'name' => '👤 TG Obunachilar (30 Kunlik) 🔥',   'min' => 500, 'max' => 200000],
-            ['id' => 99,  'name' => '👤 TG Obunachilar (90 Kunlik) 🔥',   'min' => 100, 'max' => 50000],
-            ['id' => 141, 'name' => '🇺🇿 Uzbek Obunachilar (30 Kun)',    'min' => 100, 'max' => 15000],
-            ['id' => 143, 'name' => '🇺🇿 Uzbek Obunachilar (90 Kun)',    'min' => 10,  'max' => 15000],
+        "👥 Telegram Obunachilar" => [
+            ["id" => 22,  "name" => "👫 TG Obunachi (30 Kun kafolat)",    "min" => 10,  "max" => 1000000],
+            ["id" => 23,  "name" => "👫 TG Obunachi (60 Kun kafolat)",    "min" => 10,  "max" => 1000000],
+            ["id" => 24,  "name" => "👫 TG Obunachi (90 Kun kafolat)",    "min" => 10,  "max" => 1000000],
+            ["id" => 26,  "name" => "👫 TG Obunachi (365 Kun kafolat)",   "min" => 10,  "max" => 1000000],
+            ["id" => 97,  "name" => "👤 TG Obunachilar (30 Kunlik) 🔥",  "min" => 500, "max" => 200000],
+            ["id" => 99,  "name" => "👤 TG Obunachilar (90 Kunlik) 🔥",  "min" => 100, "max" => 50000],
+            ["id" => 141, "name" => "🇺🇿 Ozbek Obunachilar (30 Kun)",     "min" => 100, "max" => 15000],
+            ["id" => 143, "name" => "🇺🇿 Ozbek Obunachilar (90 Kun)",     "min" => 10,  "max" => 15000],
         ],
-        '👁 Telegram Ko'rishlar' => [
-            ['id' => 168, 'name' => '👁 Post ko'rishlar (Eng arzoni)',     'min' => 50,  'max' => 10000],
-            ['id' => 170, 'name' => '👁 Post ko'rishlar (Tezkor Sifatli)', 'min' => 10,  'max' => 50000000],
-            ['id' => 171, 'name' => '🇺🇿 O'zbekcha ko'rishlar',          'min' => 100, 'max' => 50000],
-            ['id' => 177, 'name' => '📖 Istoriya ko'rishlar (Tezkor)',     'min' => 10,  'max' => 100000],
+        "👁 Telegram Korishlar" => [
+            ["id" => 168, "name" => "👁 Post korishlar (Eng arzoni)",     "min" => 50,  "max" => 10000],
+            ["id" => 170, "name" => "👁 Post korishlar (Tezkor Sifatli)", "min" => 10,  "max" => 50000000],
+            ["id" => 171, "name" => "🇺🇿 Ozbekcha korishlar",             "min" => 100, "max" => 50000],
+            ["id" => 177, "name" => "📖 Istoriya korishlar (Tezkor)",     "min" => 10,  "max" => 100000],
         ],
-        '🔥 Telegram Reaksiyalar' => [
-            ['id' => 197, 'name' => '⚡ Tezkor reaksiyalar (👍❤️🔥😁🎉)',  'min' => 50,  'max' => 1000000],
-            ['id' => 221, 'name' => '💰 Arzon reaksiyalar (👍🤩🎉🔥🥰)',   'min' => 10,  'max' => 200000],
-            ['id' => 238, 'name' => '🌟 Premium reaksiyalar (👍🤩🎉🔥❤️)', 'min' => 10,  'max' => 1000000],
-            ['id' => 254, 'name' => '🚀 Post ulashishlar ⚡',               'min' => 10,  'max' => 1000000],
+        "🔥 Telegram Reaksiyalar" => [
+            ["id" => 197, "name" => "⚡ Tezkor reaksiyalar (👍❤️🔥😁🎉)", "min" => 50,  "max" => 1000000],
+            ["id" => 221, "name" => "💰 Arzon reaksiyalar (👍🤩🎉🔥🥰)",  "min" => 10,  "max" => 200000],
+            ["id" => 238, "name" => "🌟 Premium reaksiyalar (👍🤩🎉🔥❤️)","min" => 10,  "max" => 1000000],
+            ["id" => 254, "name" => "🚀 Post ulashishlar ⚡",              "min" => 10,  "max" => 1000000],
         ],
-        '📸 Instagram' => [
-            ['id' => 1,   'name' => '👁 Reels ko'rishlar ⚡',              'min' => 100, 'max' => 3000000],
-            ['id' => 10,  'name' => '👤 Obunachilar (Eng arzon)',           'min' => 100, 'max' => 10000],
-            ['id' => 19,  'name' => '👤 Obunachi (Bir Umr kafolatli)',      'min' => 50,  'max' => 1000000],
-            ['id' => 275, 'name' => '❤️ Like (Tezkor, Kafolatsiz)',         'min' => 10,  'max' => 10000000],
-            ['id' => 276, 'name' => '❤️ Like (30 Kun kafolatli) ⚡',       'min' => 50,  'max' => 1000000],
-            ['id' => 321, 'name' => '✉️ Random Kamentlar ⚡',               'min' => 10,  'max' => 10000],
+        "📸 Instagram" => [
+            ["id" => 1,   "name" => "👁 Reels korishlar ⚡",              "min" => 100, "max" => 3000000],
+            ["id" => 10,  "name" => "👤 Obunachilar (Eng arzon)",         "min" => 100, "max" => 10000],
+            ["id" => 19,  "name" => "👤 Obunachi (Bir Umr kafolatli)",    "min" => 50,  "max" => 1000000],
+            ["id" => 275, "name" => "❤️ Like (Tezkor, Kafolatsiz)",       "min" => 10,  "max" => 10000000],
+            ["id" => 276, "name" => "❤️ Like (30 Kun kafolatli) ⚡",     "min" => 50,  "max" => 1000000],
+            ["id" => 321, "name" => "✉️ Random Kamentlar ⚡",             "min" => 10,  "max" => 10000],
         ],
-        '▶️ YouTube' => [
-            ['id' => 335, 'name' => '⭐ Obunachilar (30 Kun kafolat)',      'min' => 100, 'max' => 25000],
-            ['id' => 340, 'name' => '👤 Obunachilar (Kafolatsiz, Tezkor)', 'min' => 10,  'max' => 30000],
-            ['id' => 349, 'name' => '👁 Ko'rishlar (Bir Umrlik, Tezkor)', 'min' => 100, 'max' => 80000],
-            ['id' => 344, 'name' => '❤️ Like (7 Kun kafolatli)',            'min' => 10,  'max' => 50000],
+        "▶️ YouTube" => [
+            ["id" => 335, "name" => "⭐ Obunachilar (30 Kun kafolat)",    "min" => 100, "max" => 25000],
+            ["id" => 340, "name" => "👤 Obunachilar (Kafolatsiz, Tezkor)","min" => 10,  "max" => 30000],
+            ["id" => 349, "name" => "👁 Korishlar (Bir Umrlik, Tezkor)",  "min" => 100, "max" => 80000],
+            ["id" => 344, "name" => "❤️ Like (7 Kun kafolatli)",          "min" => 10,  "max" => 50000],
         ],
-        '🎵 TikTok' => [
-            ['id' => 370, 'name' => '👤 Obunachilar (30 Kun, Tezkor)',     'min' => 10,  'max' => 1000000],
-            ['id' => 378, 'name' => '👁 Ko'rishlar (Tezkor)',              'min' => 100, 'max' => 300000000],
-            ['id' => 388, 'name' => '❤️ Like (Kafolatsiz, Tezkor)',        'min' => 10,  'max' => 1000000],
-            ['id' => 389, 'name' => '❤️ Like (30 Kun kafolatli)',          'min' => 10,  'max' => 5000000],
+        "🎵 TikTok" => [
+            ["id" => 370, "name" => "👤 Obunachilar (30 Kun, Tezkor)",   "min" => 10,  "max" => 1000000],
+            ["id" => 378, "name" => "👁 Korishlar (Tezkor)",              "min" => 100, "max" => 300000000],
+            ["id" => 388, "name" => "❤️ Like (Kafolatsiz, Tezkor)",      "min" => 10,  "max" => 1000000],
+            ["id" => 389, "name" => "❤️ Like (30 Kun kafolatli)",        "min" => 10,  "max" => 5000000],
         ],
     ];
 }
-
 // ─── SMM: Asosiy menyu ────────────────────────────────────────────────────────
 if ($callback_data === "smm_main") {
     deleteMessage($chat_id, $message_id);
@@ -822,7 +821,7 @@ if ($callback_data && strpos($callback_data, "smm_svc_") === 0) {
     $svc = $services[$svc_idx];
     deleteMessage($chat_id, $message_id);
     save_step($chat_id, [
-        'step' => 'smm_enter_link',
+        'step' => "smm_enter_link",
         'smm_service_id' => $svc['id'],
         'smm_service_name' => $svc['name'],
         'smm_min' => $svc['min'],
@@ -849,10 +848,8 @@ if ($callback_data === "smm_my_orders") {
     $cnt = 0;
     while ($o = mysqli_fetch_assoc($orders)) {
         $cnt++;
-        $status_emoji = match($o['status']) {
-            'Completed' => '✅', 'In progress' => '⏳', 'Pending' => '🕐',
-            'Partial' => '⚠️', 'Canceled' => '❌', default => '🔄'
-        };
+        $status_map = ['Completed'=>'✅','In progress'=>'⏳','Pending'=>'🕐','Partial'=>'⚠️','Canceled'=>'❌'];
+        $status_emoji = $status_map[$o['status']] ?? '🔄';
         $txt .= "{$status_emoji} <b>#{$o['smm_order_id']}</b>
 ";
         $txt .= "   📌 " . mb_substr($o['service_name'], 0, 40) . "
@@ -904,7 +901,7 @@ if ($callback_data && strpos($callback_data, "smm_check_pay=") === 0) {
 
 ⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]], [['text' => "🔙 Menyu", 'callback_data' => "menu"]]]], JSON_UNESCAPED_UNICODE));
         } else {
-            $err_msg = $smm_result['error'] ?? 'Noma'lum xatolik';
+            $err_msg = $smm_result['error'] ?? "Noma lum xatolik";
             mysqli_query($connect, "UPDATE smm_orders SET payment_status='paid', status='api_error' WHERE id={$smm_row['id']}");
             sendMessage($chat_id, "⚠️ <b>To'lov qabul qilindi, lekin xizmat yuborishda xato:</b> {$err_msg}
 
@@ -1276,7 +1273,7 @@ exit;
 }
 
 // ─── SMM: Link va miqdor kiritish ────────────────────────────────────────────
-if (!empty($st['step']) && $st['step'] === 'smm_enter_link') {
+if (!empty($st['step']) && $st['step'] === "smm_enter_link") {
     $link = trim($text);
     if (!filter_var($link, FILTER_VALIDATE_URL)) {
         sendMessage($chat_id, "⚠️ Noto'g'ri URL! To'liq link kiriting.
@@ -1284,7 +1281,7 @@ Masalan: <code>https://t.me/username</code>");
         exit;
     }
     $st['smm_link'] = $link;
-    $st['step'] = 'smm_enter_qty';
+    $st['step'] = "smm_enter_qty";
     save_step($chat_id, $st);
     $kb = [[['text' => "🔙 Orqaga", 'callback_data' => "smm_cat_{$st['smm_cat_idx']}"]]];
     sendMessage($chat_id, "<b>📱 " . $st['smm_service_name'] . "</b>
@@ -1295,7 +1292,7 @@ Masalan: <code>https://t.me/username</code>");
     exit;
 }
 
-if (!empty($st['step']) && $st['step'] === 'smm_enter_qty') {
+if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
     if (!is_numeric($text) || intval($text) <= 0) {
         sendMessage($chat_id, "⚠️ Faqat musbat son kiriting!");
         exit;
