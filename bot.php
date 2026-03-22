@@ -13,8 +13,10 @@ define("DB_PORT", 57444);
 define('CHECKCARD_SHOP_ID', '647282');   // @CheckCardUz_bot dan olingan shop id
 define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
-define('SMM_API_KEY', '02384f9ca0aee3aac0fa15e342514055'); // locksmm.com dan olingan API key
-define('SMM_API_URL', 'https://locksmm.com/api/v2');
+define('SMM_API_KEY', 'bca283e2aaeb2b2752fb79c54073f48b'); // super-sim.uz dan olingan API key
+define('SMM_API_URL', 'https://super-sim.uz/api/v2');
+define('NUMBER_API_KEY', 'bca283e2aaeb2b2752fb79c54073f48b'); // super-sim.uz number API key
+define('NUMBER_API_URL', 'https://supersim.uz/api/v2');
 
 $card_number = "5614683582279246";
 
@@ -237,6 +239,15 @@ if (!in_array("smm_markup", $existing_cols)) {
 if (!in_array("smm_usd_rate", $existing_cols)) {
     mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `smm_usd_rate` INT DEFAULT 12700");
 }
+if (!in_array("smm_balance_alert", $existing_cols)) {
+    mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `smm_balance_alert` DECIMAL(10,2) DEFAULT 5.00");
+}
+if (!in_array("smm_last_check", $existing_cols)) {
+    mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `smm_last_check` DATE DEFAULT NULL");
+}
+if (!in_array("number_markup", $existing_cols)) {
+    mysqli_query($connect, "ALTER TABLE `settings` ADD COLUMN `number_markup` INT DEFAULT 20");
+}
 
 $checkSettings = mysqli_query($connect, "SELECT COUNT(*) as total FROM settings");
 $countRow = mysqli_fetch_assoc($checkSettings);
@@ -264,7 +275,7 @@ function settings($connect) {
 $res = mysqli_query($connect, "SELECT * FROM settings WHERE id = 1 LIMIT 1");
 $row = mysqli_fetch_assoc($res);
 if (!$row) {
-return ['logs' => CHANNEL_TO_JOIN, 'api_key' => 'none', 'star_price' => 240, 'premium_1_month' => 45000, 'premium_3_month' => 165000, 'premium_6_month' => 215000, 'premium_12_month' => 360000, 'channels' => null, 'bot_active' => 1, 'smm_markup' => 20, 'smm_usd_rate' => 12700];
+return ['logs' => CHANNEL_TO_JOIN, 'api_key' => 'none', 'star_price' => 240, 'premium_1_month' => 45000, 'premium_3_month' => 165000, 'premium_6_month' => 215000, 'premium_12_month' => 360000, 'channels' => null, 'bot_active' => 1, 'smm_markup' => 20, 'smm_usd_rate' => 12700, 'smm_balance_alert' => 5.00, 'smm_last_check' => null, 'number_markup' => 20];
 }
 return $row;
 }
@@ -292,6 +303,54 @@ function check_all_channels($user_id, $connect) {
     return $not_joined; // bo'sh bo'lsa — hammaga obuna
 }
 
+// ─── Kunlik SMM balans tekshirish ────────────────────────────────────────────
+function smm_daily_balance_check($connect, $admin) {
+    $cfg       = settings($connect);
+    $today     = date('Y-m-d');
+    $last_check = $cfg['smm_last_check'] ?? null;
+    if ($last_check === $today) return; // Bugun tekshirildi
+    
+    // Sanani yangilash
+    mysqli_query($connect, "UPDATE settings SET smm_last_check = '{$today}' WHERE id = 1");
+    
+    $bal_data  = smm_api(['action' => 'balance']);
+    if (!$bal_data || isset($bal_data['error'])) {
+        sendMessage($admin, "⚠️ <b>SMM balans tekshirishda xatolik!</b>
+Xato: " . ($bal_data['error'] ?? 'API javob bermadi'));
+        return;
+    }
+    $balance   = floatval($bal_data['balance'] ?? 0);
+    $currency  = $bal_data['currency'] ?? 'USD';
+    $alert_min = floatval($cfg['smm_balance_alert'] ?? 5.00);
+    
+    if ($balance <= $alert_min) {
+        sendMessage($admin,
+            "🚨 <b>super-sim.uz balansi kam!</b>
+
+" .
+            "💰 Hozirgi balans: <b>{$balance} {$currency}</b>
+" .
+            "⚠️ Minimal chegara: <b>{$alert_min} {$currency}</b>
+
+" .
+            "Balansni to'ldiring: https://super-sim.uz
+" .
+            "Aks holda buyurtmalar bajarilmaydi!"
+        );
+    } else {
+        sendMessage($admin,
+            "✅ <b>Kunlik SMM balans tekshiruvi</b>
+
+" .
+            "💰 Balans: <b>{$balance} {$currency}</b>
+" .
+            "📅 " . date('d.m.Y')
+        );
+    }
+}
+smm_daily_balance_check($connect, $admin);
+
+// ─────────────────────────────────────────────────────────────────────────────
 $raw = file_get_contents('php://input');
 $update = json_decode($raw, true) ?: [];
 if (empty($update)) exit;
@@ -379,8 +438,9 @@ function get_bot_username() {
 
 $menu = json_encode(['inline_keyboard' => [
 [['text' => "⭐️ Stars sotib olish", 'callback_data' => "stars"], ['text' => "👑 Premium", 'callback_data' => "premium"]],
-[['text' => "📱 SMM Panel", 'callback_data' => "smm_main"], ['text' => "🎮 Game Bar", 'callback_data' => "gamebar"]],
-[['text' => "💳 Balans", 'callback_data' => "wallet_main"], ['text' => "👥 Do'stlarni taklif qilish", 'callback_data' => "referral"]],
+[['text' => "📱 SMM Panel", 'callback_data' => "smm_main"], ['text' => "📞 Nomer olish", 'callback_data' => "number_main"]],
+[['text' => "🎮 Game Bar", 'callback_data' => "gamebar"], ['text' => "💳 Balans", 'callback_data' => "wallet_main"]],
+[['text' => "👥 Do'stlarni taklif qilish", 'callback_data' => "referral"]],
 ]], JSON_UNESCAPED_UNICODE);
 
 if ($text !== null && strpos($text, "/start") === 0) {
@@ -595,7 +655,9 @@ exit;
 if ($callback_data === "admin_prices" && $from_id == $admin) {
 $settings = settings($connect);
 $smm_cfg_p = settings($connect);
-$smm_markup_now = intval($smm_cfg_p['smm_markup'] ?? 20);
+$smm_markup_now        = intval($smm_cfg_p['smm_markup'] ?? 20);
+$smm_balance_alert_now = floatval($smm_cfg_p['smm_balance_alert'] ?? 5.00);
+$number_markup_now     = intval($smm_cfg_p['number_markup'] ?? 20);
 $reply = json_encode(['inline_keyboard' => [
 [['text' => "⭐ Stars narxi: {$settings['star_price']} so'm", 'callback_data' => "edit_star_price"]],
 [['text' => "👑 1 oy: {$settings['premium_1_month']} so'm", 'callback_data' => "edit_premium_1"]],
@@ -603,6 +665,8 @@ $reply = json_encode(['inline_keyboard' => [
 [['text' => "👑 6 oy: {$settings['premium_6_month']} so'm", 'callback_data' => "edit_premium_6"]],
 [['text' => "👑 12 oy: {$settings['premium_12_month']} so'm", 'callback_data' => "edit_premium_12"]],
 [['text' => "📱 SMM Markup: {$smm_markup_now}%", 'callback_data' => "edit_smm_markup"]],
+[['text' => "🔔 SMM ogohlantirish: \${$smm_balance_alert_now}", 'callback_data' => "edit_smm_alert"]],
+[['text' => "📞 Nomer markup: {$number_markup_now}%", 'callback_data' => "edit_number_markup"]],
 
 [['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]
 ]], JSON_UNESCAPED_UNICODE);
@@ -692,6 +756,29 @@ if ($callback_data === "edit_premium_12" && $from_id == $admin) {
 save_step($chat_id, ['step' => 'edit_premium_12']);
 sendMessage($chat_id, "👑 Premium 12 oy narxini kiriting (so'm):");
 exit;
+}
+
+if ($callback_data === "edit_number_markup" && $from_id == $admin) {
+    save_step($chat_id, ['step' => 'edit_number_markup']);
+    $cur_nm = intval(settings($connect)['number_markup'] ?? 20);
+    sendMessage($chat_id, "📞 <b>Virtual nomer markup foizi</b>
+
+Hozirgi: <b>{$cur_nm}%</b>
+
+Yangi foiz kiriting (masalan: 20):");
+    exit;
+}
+
+if ($callback_data === "edit_smm_alert" && $from_id == $admin) {
+    save_step($chat_id, ['step' => 'edit_smm_alert']);
+    $cur_alert = floatval(settings($connect)['smm_balance_alert'] ?? 5.00);
+    sendMessage($chat_id, "🔔 <b>SMM balans ogohlantirish chegarasi</b>
+
+Hozirgi: <b>\${$cur_alert}</b>
+
+Yangi chegara kiriting (masalan: 5 yoki 10):
+Bu miqdordan past tushsa admin xabar oladi.");
+    exit;
 }
 
 if ($callback_data === "edit_smm_markup" && $from_id == $admin) {
@@ -794,63 +881,60 @@ function smm_api($params) {
 function smm_categories() {
     return [
         "⭐ Telegram Stars" => [
-            ["id" => 108, "name" => "⭐ Stars (Profil uchun) ⚡ Tezkor", "min" => 50,  "max" => 1000000],
-            ["id" => 89,  "name" => "⭐ Stars (Post uchun) ⚡ Tezkor",   "min" => 5,   "max" => 10000],
+            ["id" => 1,   "name" => "⭐ Stars (profil uchun) ⚡️",         "min" => 50,   "max" => 1000000],
         ],
-        "👑 Telegram Premium Obunachi" => [
-            ["id" => 458, "name" => "🌟 Premium Obunachi (5 Kunlik) 🔥",  "min" => 100, "max" => 10000],
-            ["id" => 459, "name" => "🌟 Premium Obunachi (15 Kunlik) 🔥", "min" => 500, "max" => 10000],
-            ["id" => 460, "name" => "🌟 Premium Obunachi (20 Kunlik) 🔥", "min" => 500, "max" => 10000],
-            ["id" => 461, "name" => "🌟 Premium Obunachi (30 Kunlik) 🔥", "min" => 500, "max" => 10000],
-            ["id" => 462, "name" => "🌟 Premium Obunachi (40 Kunlik) 🔥", "min" => 500, "max" => 10000],
-            ["id" => 463, "name" => "🌟 Premium Obunachi (60 Kunlik) 🔥", "min" => 500, "max" => 10000],
-            ["id" => 464, "name" => "🌟 Premium Obunachi (90 Kunlik) 🔥", "min" => 500, "max" => 10000],
+        "👑 Telegram Premium" => [
+            ["id" => 364, "name" => "🌟 Premium (20 kunlik)",              "min" => 200,  "max" => 10000],
+            ["id" => 365, "name" => "🌟 Premium (30 kunlik)",              "min" => 200,  "max" => 20000],
+            ["id" => 366, "name" => "🌟 Premium (45 kunlik)",              "min" => 200,  "max" => 30000],
+            ["id" => 367, "name" => "🌟 Premium (60 kunlik)",              "min" => 200,  "max" => 50000],
+            ["id" => 368, "name" => "🌟 Premium (90 kunlik)",              "min" => 200,  "max" => 80000],
+            ["id" => 369, "name" => "🌟 Premium (180 kunlik)",             "min" => 200,  "max" => 100000],
+            ["id" => 370, "name" => "🌟 Premium (365 kunlik)",             "min" => 200,  "max" => 100000],
         ],
         "👥 Telegram Obunachilar" => [
-            ["id" => 22,  "name" => "👫 TG Obunachi (30 Kun kafolat)",    "min" => 10,  "max" => 1000000],
-            ["id" => 23,  "name" => "👫 TG Obunachi (60 Kun kafolat)",    "min" => 10,  "max" => 1000000],
-            ["id" => 24,  "name" => "👫 TG Obunachi (90 Kun kafolat)",    "min" => 10,  "max" => 1000000],
-            ["id" => 26,  "name" => "👫 TG Obunachi (365 Kun kafolat)",   "min" => 10,  "max" => 1000000],
-            ["id" => 97,  "name" => "👤 TG Obunachilar (30 Kunlik) 🔥",  "min" => 500, "max" => 200000],
-            ["id" => 99,  "name" => "👤 TG Obunachilar (90 Kunlik) 🔥",  "min" => 100, "max" => 50000],
-            ["id" => 141, "name" => "🇺🇿 Ozbek Obunachilar (30 Kun)",     "min" => 100, "max" => 15000],
-            ["id" => 143, "name" => "🇺🇿 Ozbek Obunachilar (90 Kun)",     "min" => 10,  "max" => 15000],
+            ["id" => 338, "name" => "👤 Obunachi (3-7 kun kafolat) arzon", "min" => 10,   "max" => 50000],
+            ["id" => 371, "name" => "👤 Obunachi (30 kun kafolat)",        "min" => 500,  "max" => 200000],
+            ["id" => 75,  "name" => "👤 Obunachi (60 kun kafolat)",        "min" => 500,  "max" => 200000],
+            ["id" => 76,  "name" => "👤 Obunachi (90 kun kafolat)",        "min" => 500,  "max" => 200000],
+            ["id" => 77,  "name" => "👤 Obunachi (120 kun kafolat)",       "min" => 500,  "max" => 300000],
+            ["id" => 78,  "name" => "👤 Obunachi (BezMinus ⛔️)",          "min" => 500,  "max" => 500000],
+            ["id" => 376, "name" => "🇺🇿 Ozbek Obunachi (30 kun)",        "min" => 100,  "max" => 15000],
+            ["id" => 377, "name" => "🇺🇿 Ozbek Obunachi (90 kun)",        "min" => 10,   "max" => 15000],
         ],
         "👁 Telegram Korishlar" => [
-            ["id" => 168, "name" => "👁 Post korishlar (Eng arzoni)",     "min" => 50,  "max" => 10000],
-            ["id" => 170, "name" => "👁 Post korishlar (Tezkor Sifatli)", "min" => 10,  "max" => 50000000],
-            ["id" => 171, "name" => "🇺🇿 Ozbekcha korishlar",             "min" => 100, "max" => 50000],
-            ["id" => 177, "name" => "📖 Istoriya korishlar (Tezkor)",     "min" => 10,  "max" => 100000],
+            ["id" => 126, "name" => "👁 Korishlar (arzon)",                "min" => 50,   "max" => 20000],
+            ["id" => 268, "name" => "👁 Korishlar (tezkor) ⚡️",           "min" => 10,   "max" => 500000],
+            ["id" => 295, "name" => "🇺🇿 Ozbek korishlar (statistika)",   "min" => 50,   "max" => 50000],
         ],
         "🔥 Telegram Reaksiyalar" => [
-            ["id" => 197, "name" => "⚡ Tezkor reaksiyalar (👍❤️🔥😁🎉)", "min" => 50,  "max" => 1000000],
-            ["id" => 221, "name" => "💰 Arzon reaksiyalar (👍🤩🎉🔥🥰)",  "min" => 10,  "max" => 200000],
-            ["id" => 238, "name" => "🌟 Premium reaksiyalar (👍🤩🎉🔥❤️)","min" => 10,  "max" => 1000000],
-            ["id" => 254, "name" => "🚀 Post ulashishlar ⚡",              "min" => 10,  "max" => 1000000],
+            ["id" => 162, "name" => "⚡ Reaksiya (👍❤️🔥🎉🥰) arzon",    "min" => 10,   "max" => 1000000],
+            ["id" => 164, "name" => "⚡ Reaksiya (👎💩🤮) salbiy",        "min" => 10,   "max" => 1000000],
+            ["id" => 86,  "name" => "⚡ Reaksiya (👍❤️🔥🎉😁) tezkor",   "min" => 50,   "max" => 1000000],
+            ["id" => 201, "name" => "🚀 Post ulashishlar",                 "min" => 10,   "max" => 500000],
         ],
         "📸 Instagram" => [
-            ["id" => 1,   "name" => "👁 Reels korishlar ⚡",              "min" => 100, "max" => 3000000],
-            ["id" => 10,  "name" => "👤 Obunachilar (Eng arzon)",         "min" => 100, "max" => 10000],
-            ["id" => 19,  "name" => "👤 Obunachi (Bir Umr kafolatli)",    "min" => 50,  "max" => 1000000],
-            ["id" => 275, "name" => "❤️ Like (Tezkor, Kafolatsiz)",       "min" => 10,  "max" => 10000000],
-            ["id" => 276, "name" => "❤️ Like (30 Kun kafolatli) ⚡",     "min" => 50,  "max" => 1000000],
-            ["id" => 321, "name" => "✉️ Random Kamentlar ⚡",             "min" => 10,  "max" => 10000],
+            ["id" => 342, "name" => "👤 Obunachi (arzon)",                 "min" => 100,  "max" => 1000000],
+            ["id" => 344, "name" => "👤 Obunachi (365 kun kafolat)",       "min" => 4,    "max" => 1000000],
+            ["id" => 225, "name" => "🎥 Video korishlar (arzon)",          "min" => 100,  "max" => 200000],
+            ["id" => 224, "name" => "❤️ Like (365 kun kafolat)",           "min" => 10,   "max" => 10000000],
+            ["id" => 346, "name" => "❤️ Like (arzon)",                     "min" => 100,  "max" => 100000],
+            ["id" => 306, "name" => "↪️ Ulashish",                         "min" => 100,  "max" => 1000000],
         ],
         "▶️ YouTube" => [
-            ["id" => 335, "name" => "⭐ Obunachilar (30 Kun kafolat)",    "min" => 100, "max" => 25000],
-            ["id" => 340, "name" => "👤 Obunachilar (Kafolatsiz, Tezkor)","min" => 10,  "max" => 30000],
-            ["id" => 349, "name" => "👁 Korishlar (Bir Umrlik, Tezkor)",  "min" => 100, "max" => 80000],
-            ["id" => 344, "name" => "❤️ Like (7 Kun kafolatli)",          "min" => 10,  "max" => 50000],
+            ["id" => 363, "name" => "👤 Obunachilar (kafolatsiz)",         "min" => 10,   "max" => 50000],
+            ["id" => 308, "name" => "👍 Like",                             "min" => 100,  "max" => 30000],
+            ["id" => 310, "name" => "👁 Video korishlar",                  "min" => 100,  "max" => 200000],
+            ["id" => 311, "name" => "👁 Shorts korishlar",                 "min" => 500,  "max" => 20000000],
         ],
         "🎵 TikTok" => [
-            ["id" => 370, "name" => "👤 Obunachilar (30 Kun, Tezkor)",   "min" => 10,  "max" => 1000000],
-            ["id" => 378, "name" => "👁 Korishlar (Tezkor)",              "min" => 100, "max" => 300000000],
-            ["id" => 388, "name" => "❤️ Like (Kafolatsiz, Tezkor)",      "min" => 10,  "max" => 1000000],
-            ["id" => 389, "name" => "❤️ Like (30 Kun kafolatli)",        "min" => 10,  "max" => 5000000],
+            ["id" => 335, "name" => "👤 Obunachilar (10-30 kun kafolat)", "min" => 100,  "max" => 40000],
+            ["id" => 314, "name" => "📹 Video korishlar",                  "min" => 100,  "max" => 250000000],
+            ["id" => 313, "name" => "💗 Like",                             "min" => 10,   "max" => 500000],
+            ["id" => 315, "name" => "↪️ Ulashish",                         "min" => 10,   "max" => 217545811],
         ],
     ];
-}
-// ─── Balans to'ldirish funksiyasi ────────────────────────────────────────────
+}// ─── Balans to'ldirish funksiyasi ────────────────────────────────────────────
 function process_wallet_topup($chat_id, $connect, $amount) {
     global $CheckCardPay, $stars_card;
     if ($amount < 1000) {
@@ -1017,7 +1101,7 @@ if ($callback_data === "smm_main") {
     $kb[] = [['text' => "🔙 Orqaga", 'callback_data' => "menu"]];
     sendMessage($chat_id, "<b>📱 SMM Panel</b>
 
-🌐 <b>locksmm.com</b> orqali xizmatlar
+🌐 <b>super-sim.uz</b> orqali xizmatlar
 
 Kategoriyani tanlang:", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
     exit;
@@ -1189,6 +1273,197 @@ if ($callback_data && strpos($callback_data, "smm_cancel_pay=") === 0) {
     deleteMessage($chat_id, $message_id);
     sendMessage($chat_id, "❌ <b>Buyurtma bekor qilindi.</b>", json_encode(['inline_keyboard' => [[['text' => "🔙 SMM Panel", 'callback_data' => "smm_main"]]]], JSON_UNESCAPED_UNICODE));
     answerCallback($callback_id, "Bekor qilindi.", true);
+    exit;
+}
+
+// ─── 📞 Virtual Nomer tizimi ─────────────────────────────────────────────────
+function number_api($action, $params = []) {
+    if (NUMBER_API_KEY === 'SIZNING_NUMBER_API_KEY') {
+        return ['error' => 'Number API key ornatilmagan!'];
+    }
+    $url = NUMBER_API_URL . '?action=' . $action . '&key=' . NUMBER_API_KEY;
+    foreach ($params as $k => $v) $url .= '&' . $k . '=' . urlencode($v);
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    $res = curl_exec($ch); curl_close($ch);
+    if (!$res) return ['error' => 'Ulanish xatoligi'];
+    $decoded = json_decode($res, true);
+    return $decoded ?: ['error' => 'Javob xatoligi: ' . substr($res, 0, 80)];
+}
+
+// number_main — asosiy sahifa + davlatlar ro'yxati
+if ($callback_data === "number_main" || ($callback_data && strpos($callback_data, "numpage=") === 0)) {
+    deleteMessage($chat_id, $message_id);
+    $page = 0;
+    if ($callback_data && strpos($callback_data, "numpage=") === 0) {
+        $parts_np = explode("=", $callback_data);
+        $page = intval($parts_np[1] ?? 0);
+    }
+    $cfg_n = settings($connect);
+    $num_markup = intval($cfg_n['number_markup'] ?? 20);
+    $api_resp = number_api('countries');
+    if (!$api_resp || isset($api_resp['error']) || !isset($api_resp['countries'])) {
+        sendMessage($chat_id, "⚠️ API xatolik: " . ($api_resp['error'] ?? 'Davlatlar yuklanmadi'));
+        exit;
+    }
+    $countries = $api_resp['countries'];
+    $perPage = 10;
+    $total = count($countries);
+    $totalPages = ceil($total / $perPage);
+    $start = $page * $perPage;
+    $list = array_slice($countries, $start, $perPage);
+    $kb = [];
+    foreach ($list as $c) {
+        $price_raw = floatval($c['price_uzs'] ?? 0);
+        $price_with_markup = intval($price_raw * (1 + $num_markup / 100));
+        $kb[] = [['text' => "{$c['country_name']} — " . number_format($price_with_markup, 0, '.', ' ') . " so'm",
+                  'callback_data' => "numget={$price_with_markup}={$c['country_code']}={$c['country_name']}"]];
+    }
+    $nav = [];
+    if ($page > 0) $nav[] = ['text' => "⬅️", 'callback_data' => "numpage=" . ($page - 1)];
+    $nav[] = ['text' => ($page + 1) . "/{$totalPages}", 'callback_data' => "no_action"];
+    if ($start + $perPage < $total) $nav[] = ['text' => "➡️", 'callback_data' => "numpage=" . ($page + 1)];
+    $kb[] = $nav;
+    $kb[] = [['text' => "📊 TOP 10", 'callback_data' => "numtop10"], ['text' => "💸 Eng arzon", 'callback_data' => "numarzon"]];
+    $kb[] = [['text' => "🔙 Orqaga", 'callback_data' => "menu"]];
+    $bal_n = get_balance($chat_id, $connect);
+    sendMessage($chat_id, "<b>📞 Virtual Nomer olish</b>
+
+💰 Balansingiz: <b>" . number_format($bal_n, 0, '.', ' ') . " so'm</b>
+
+🌍 Davlatni tanlang:", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+// TOP 10 va arzon
+if ($callback_data === "numtop10" || $callback_data === "numarzon") {
+    $cfg_n2 = settings($connect);
+    $num_markup2 = intval($cfg_n2['number_markup'] ?? 20);
+    $api_resp2 = number_api('countries');
+    if (!$api_resp2 || !isset($api_resp2['countries'])) { answerCallback($callback_id, "API xatolik", true); exit; }
+    $countries2 = $api_resp2['countries'];
+    if ($callback_data === "numarzon") {
+        usort($countries2, function($a, $b) { return floatval($a['price_uzs']) <=> floatval($b['price_uzs']); });
+        $title2 = "💸 Eng arzon 10 ta raqam";
+    } else {
+        shuffle($countries2);
+        $title2 = "📊 TOP 10 davlatlar";
+    }
+    $list2 = array_slice($countries2, 0, 10);
+    $kb2 = [];
+    foreach ($list2 as $c2) {
+        $p2 = intval(floatval($c2['price_uzs']) * (1 + $num_markup2 / 100));
+        $kb2[] = [['text' => "{$c2['country_name']} — " . number_format($p2, 0, '.', ' ') . " so'm",
+                   'callback_data' => "numget={$p2}={$c2['country_code']}={$c2['country_name']}"]];
+    }
+    $kb2[] = [['text' => "🔙 Orqaga", 'callback_data' => "number_main"]];
+    editMessage($chat_id, $message_id, "<b>{$title2}</b>", json_encode(['inline_keyboard' => $kb2], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+// Nomer tasdiqlash
+if ($callback_data && strpos($callback_data, "numget=") === 0) {
+    $parts_g = explode("=", $callback_data);
+    $price_g   = intval($parts_g[1] ?? 0);
+    $code_g    = $parts_g[2] ?? '';
+    $country_g = $parts_g[3] ?? '';
+    $bal_g = get_balance($chat_id, $connect);
+    if ($bal_g < $price_g) {
+        $need = $price_g - $bal_g;
+        answerCallback($callback_id, "Balans yetarli emas! " . number_format($need, 0, '.', ' ') . " so'm yetishmaydi", true);
+        exit;
+    }
+    $kb_g = [
+        [['text' => "✅ Tasdiqlash", 'callback_data' => "numconfirm={$price_g}={$code_g}"]],
+        [['text' => "❌ Bekor qilish", 'callback_data' => "number_main"]],
+    ];
+    editMessage($chat_id, $message_id,
+        "<b>📞 Buyurtmani tasdiqlang</b>
+
+🌍 Davlat: <b>{$country_g}</b>
+💰 Narxi: <b>" . number_format($price_g, 0, '.', ' ') . " so'm</b>
+
+💳 Balansingizdan ayiriladi.
+⚠️ Raqam olingach bekor qilib bo'lmaydi!",
+        json_encode(['inline_keyboard' => $kb_g], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+// Nomer olish — tasdiqlash
+if ($callback_data && strpos($callback_data, "numconfirm=") === 0) {
+    $parts_c = explode("=", $callback_data);
+    $price_c = intval($parts_c[1] ?? 0);
+    $code_c  = $parts_c[2] ?? '';
+    // Balansdan ayirish
+    $deducted_n = deduct_balance($chat_id, $price_c, $connect);
+    if (!$deducted_n) {
+        answerCallback($callback_id, "Balans yetarli emas!", true); exit;
+    }
+    // API dan nomer olish
+    $num_resp = number_api('getnum', ['code' => $code_c]);
+    if (!$num_resp || !isset($num_resp['phone'])) {
+        add_balance($chat_id, $price_c, $connect); // qaytarish
+        $err_n = $num_resp['error'] ?? json_encode($num_resp);
+        deleteMessage($chat_id, $message_id);
+        sendMessage($chat_id, "⚠️ <b>Raqam olishda xatolik!</b>
+
+Xato: <code>{$err_n}</code>
+
+Balansingiz qaytarildi.");
+        sendMessage($admin, "⚠️ Number API xato
+User: {$chat_id}
+Kod: {$code_c}
+Xato: {$err_n}");
+        exit;
+    }
+    $phone_n = $num_resp['phone'];
+    $hash_n  = $num_resp['hash'];
+    $new_bal_n = get_balance($chat_id, $connect);
+    deleteMessage($chat_id, $message_id);
+    $kb_sms = [
+        [['text' => "🔢 SMS kodni olish", 'callback_data' => "numsms={$hash_n}"]],
+        [['text' => "🔙 Bosh menyu", 'callback_data' => "menu"]],
+    ];
+    sendMessage($chat_id,
+        "✅ <b>Raqam muvaffaqiyatli olindi!</b>
+
+📞 Raqamingiz: <code>{$phone_n}</code>
+
+Raqamni Telegram ilovasiga kiriting va SMS kodni oling.
+
+💳 Qolgan balans: <b>" . number_format($new_bal_n, 0, '.', ' ') . " so'm</b>
+
+⚠️ 2-bosqichli parolni 1.5 kundan keyin qo'ying!",
+        json_encode(['inline_keyboard' => $kb_sms], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+// SMS kodni olish
+if ($callback_data && strpos($callback_data, "numsms=") === 0) {
+    $hash_s = str_replace("numsms=", "", $callback_data);
+    $sms_resp = number_api('getsms', ['hash' => $hash_s]);
+    if (!$sms_resp || !isset($sms_resp['sms'])) {
+        answerCallback($callback_id, "SMS kod hali kelmadi. Biroz kuting va qayta urinib ko'ring.", true);
+        exit;
+    }
+    $sms_code = $sms_resp['sms'];
+    $sms_pass = $sms_resp['password'] ?? '';
+    $kb_sms2 = [
+        [['text' => "🔄 Qayta tekshirish", 'callback_data' => "numsms={$hash_s}"]],
+        [['text' => "🔙 Bosh menyu", 'callback_data' => "menu"]],
+    ];
+    editMessage($chat_id, $message_id,
+        "✅ <b>SMS kod keldi!</b>
+
+🔢 SMS: <code>{$sms_code}</code>" .
+        ($sms_pass ? "
+🔑 Parol: <code>{$sms_pass}</code>" : "") .
+        "
+
+✅ Kodni kiriting va hisobingizga kiring!",
+        json_encode(['inline_keyboard' => $kb_sms2], JSON_UNESCAPED_UNICODE));
     exit;
 }
 
@@ -2020,6 +2295,34 @@ clear_step($chat_id);
 } else {
 sendMessage($chat_id, "⚠️ Iltimos to'g'ri raqam kiriting!");
 }
+exit;
+}
+
+if (!empty($st['step']) && $st['step'] === 'edit_number_markup') {
+if (is_numeric($text) && intval($text) >= 0 && intval($text) <= 500) {
+$val_nm = intval($text);
+$stmt_nm = mysqli_prepare($connect, "UPDATE settings SET number_markup = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt_nm, 'i', $val_nm);
+mysqli_stmt_execute($stmt_nm); mysqli_stmt_close($stmt_nm);
+sendMessage($chat_id, "✅ Nomer markup <b>{$val_nm}%</b> ga ozgartirildi!
+
+Endi barcha raqam narxlariga +{$val_nm}% qoshiladi.");
+clear_step($chat_id);
+} else { sendMessage($chat_id, "Iltimos 0-500 oraligida son kiriting!"); }
+exit;
+}
+
+if (!empty($st['step']) && $st['step'] === 'edit_smm_alert') {
+if (is_numeric($text) && floatval($text) >= 0) {
+$val = floatval($text);
+$stmt = mysqli_prepare($connect, "UPDATE settings SET smm_balance_alert = ? WHERE id = 1");
+mysqli_stmt_bind_param($stmt, 'd', $val);
+mysqli_stmt_execute($stmt); mysqli_stmt_close($stmt);
+sendMessage($chat_id, "✅ Ogohlantirish chegarasi <b>\${$val}</b> ga o'zgartirildi!
+
+Locksmm.com balansi shu miqdordan tushsa xabar olasiz.");
+clear_step($chat_id);
+} else { sendMessage($chat_id, "⚠️ To'g'ri son kiriting (masalan: 5)!"); }
 exit;
 }
 
