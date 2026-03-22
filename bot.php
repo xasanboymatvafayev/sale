@@ -580,9 +580,9 @@ $txt .= "⏳ <b>Kutilayotgan Stars:</b> " . ($stats['pending_stars'] ?? 0) . "
 $txt .= "⏳ <b>Kutilayotgan Premium:</b> " . ($stats['pending_premium'] ?? 0) . "
 
 ";
-$txt .= "💰 <b>Jami daromad:</b> " . number_format($total_revenue) . " so'm
+$txt .= "💰 <b>Jami daromad:</b> " . number_format($total_revenue, 0, '.', ' ') . " so'm
 ";
-$txt .= "📅 <b>Bugungi buyurtmalar:</b> {$today_orders} ta | " . number_format($today_revenue) . " so'm
+$txt .= "📅 <b>Bugungi buyurtmalar:</b> {$today_orders} ta | " . number_format($today_revenue, 0, '.', ' ') . " so'm
 
 ";
 $txt .= "🎮 <b>Game Bar yechish so'rovlari:</b> " . ($stats['game_withdrawals'] ?? 0) . "
@@ -882,14 +882,14 @@ function process_wallet_topup($chat_id, $connect, $amount) {
     sendMessage($chat_id, "<b>💳 Balans to'ldirish</b>
 
 📋 Buyurtma #{$insert_id_w}
-💰 To'ldirish: <b>" . number_format($amount) . " so'm</b>
+💰 To'ldirish: <b>" . number_format($amount, 0, '.', ' ') . " so'm</b>
 
 ━━━━━━━━━━━━━━━
 💳 Karta: <code>{$stars_card}</code>
-💵 To'lash kerak: <b>" . number_format($pay_amount) . " so'm</b>
+💵 To'lash kerak: <b>" . number_format($pay_amount, 0, '.', ' ') . " so'm</b>
 ━━━━━━━━━━━━━━━
 
-⚠️ Aynan <b>" . number_format($pay_amount) . " so'm</b> o'tkazing!
+⚠️ Aynan <b>" . number_format($pay_amount, 0, '.', ' ') . " so'm</b> o'tkazing!
 So'ng '♻️ To'lovni tekshirish' tugmasini bosing.", json_encode(['inline_keyboard' => $kb_w], JSON_UNESCAPED_UNICODE));
 }
 
@@ -906,7 +906,7 @@ if ($callback_data === "smm_pay_balance") {
     $deducted = deduct_balance($chat_id, $som_price, $connect);
     if (!$deducted) {
         $bal = get_balance($chat_id, $connect);
-        answerCallback($callback_id, "❌ Balans yetarli emas! (" . number_format($bal) . " so'm)", true); exit;
+        answerCallback($callback_id, "❌ Balans yetarli emas! (" . number_format($bal, 0, '.', ' ') . " so'm)", true); exit;
     }
     $new_bal = get_balance($chat_id, $connect);
     // DB
@@ -921,8 +921,8 @@ if ($callback_data === "smm_pay_balance") {
         mysqli_query($connect, "UPDATE smm_orders SET smm_order_id={$smm_oid}, status='Pending' WHERE id={$rid_s}");
         deleteMessage($chat_id, $message_id);
         sendMessage($chat_id, "✅ <b>Balansdan to'landi!</b>
-💰 " . number_format($som_price) . " so'm
-💳 Qolgan balans: <b>" . number_format($new_bal) . " so'm</b>
+💰 " . number_format($som_price, 0, '.', ' ') . " so'm
+💳 Qolgan balans: <b>" . number_format($new_bal, 0, '.', ' ') . " so'm</b>
 
 📋 SMM Buyurtma ID: <b>#{$smm_oid}</b>
 ⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]]]], JSON_UNESCAPED_UNICODE));
@@ -1062,8 +1062,8 @@ if ($callback_data && strpos($callback_data, "smm_svc_") === 0) {
             }
         }
     }
-    $rate_line = $rate_som_1000 > 0 ? "\n💲 <b>1000 ta narxi: " . number_format($rate_som_1000) . " so'm</b>" : "";
-    sendMessage($chat_id, "<b>📱 " . $svc['name'] . "</b>\n\n📊 Min: <b>" . number_format($svc['min']) . "</b> | Max: <b>" . number_format($svc['max']) . "</b>{$rate_line}\n\n🔗 Link kiriting (to'liq URL):\nMasalan: <code>https://t.me/username</code>", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+    $rate_line = $rate_som_1000 > 0 ? "\n💲 <b>1000 ta narxi: " . number_format($rate_som_1000, 0, '.', ' ') . " so'm</b>" : "";
+    sendMessage($chat_id, "<b>📱 " . $svc['name'] . "</b>\n\n📊 Min: <b>" . number_format($svc['min'], 0, '.', ' ') . "</b> | Max: <b>" . number_format($svc['max'], 0, '.', ' ') . "</b>{$rate_line}\n\n🔗 Link kiriting (to'liq URL):\nMasalan: <code>https://t.me/username</code>", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
     exit;
 }
 
@@ -1083,7 +1083,7 @@ if ($callback_data === "smm_my_orders") {
 ";
         $txt .= "   📌 " . mb_substr($o['service_name'], 0, 40) . "
 ";
-        $txt .= "   🔢 {$o['quantity']} | 💰 " . number_format($o['price']) . " so'm
+        $txt .= "   🔢 {$o['quantity']} | 💰 " . number_format($o['price'], 0, '.', ' ') . " so'm
 ";
         $txt .= "   📅 " . date('d.m.Y H:i', strtotime($o['date'])) . "
 
@@ -1126,7 +1126,7 @@ if ($callback_data && strpos($callback_data, "smm_check_pay=") === 0) {
 
 📋 SMM Buyurtma ID: <b>#{$smm_api_order_id}</b>
 📌 " . $smm_row['service_name'] . "
-🔢 Miqdor: <b>" . number_format($smm_row['quantity']) . "</b>
+🔢 Miqdor: <b>" . number_format($smm_row['quantity'], 0, '.', ' ') . "</b>
 
 ⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]], [['text' => "🔙 Menyu", 'callback_data' => "menu"]]]], JSON_UNESCAPED_UNICODE));
         } else {
@@ -1178,7 +1178,7 @@ if ($callback_data === "wallet_main") {
     ];
     sendMessage($chat_id, "<b>💳 Balans</b>
 
-💰 Hozirgi balans: <b>" . number_format($bal) . " so'm</b>
+💰 Hozirgi balans: <b>" . number_format($bal, 0, '.', ' ') . " so'm</b>
 
 📌 Balansdan foydalanish:
 • Stars va Premium xarid qilish
@@ -1223,7 +1223,7 @@ if ($callback_data === "wallet_history") {
     while ($h = mysqli_fetch_assoc($hist)) {
         $cnt++;
         $st_e = $h['status'] === 'paid' ? '✅' : ($h['status'] === 'cancel' ? '❌' : '⏳');
-        $txt .= "{$st_e} " . number_format($h['amount']) . " so'm — " . date('d.m.Y H:i', strtotime($h['date'])) . "
+        $txt .= "{$st_e} " . number_format($h['amount'], 0, '.', ' ') . " so'm — " . date('d.m.Y H:i', strtotime($h['date'])) . "
 ";
     }
     if ($cnt == 0) $txt .= "Hozircha to'ldirish yo'q.";
@@ -1254,13 +1254,13 @@ if ($callback_data && strpos($callback_data, "wallet_check=") === 0) {
         add_balance($chat_id, $top_row['amount'], $connect);
         $new_bal = get_balance($chat_id, $connect);
         @deleteMessage($chat_id, $message_id);
-        sendMessage($chat_id, "✅ <b>Balansga " . number_format($top_row['amount']) . " so'm qo'shildi!</b>
+        sendMessage($chat_id, "✅ <b>Balansga " . number_format($top_row['amount'], 0, '.', ' ') . " so'm qo'shildi!</b>
 
-💰 Hozirgi balans: <b>" . number_format($new_bal) . " so'm</b>", json_encode(['inline_keyboard' => [[['text' => "💳 Balans", 'callback_data' => "wallet_main"]]]], JSON_UNESCAPED_UNICODE));
+💰 Hozirgi balans: <b>" . number_format($new_bal, 0, '.', ' ') . " so'm</b>", json_encode(['inline_keyboard' => [[['text' => "💳 Balans", 'callback_data' => "wallet_main"]]]], JSON_UNESCAPED_UNICODE));
         sendMessage($admin, "💳 Balans to'ldirildi
 User: {$chat_id}
-Miqdor: " . number_format($top_row['amount']) . " so'm
-Yangi balans: " . number_format($new_bal) . " so'm");
+Miqdor: " . number_format($top_row['amount'], 0, '.', ' ') . " so'm
+Yangi balans: " . number_format($new_bal, 0, '.', ' ') . " so'm");
         answerCallback($callback_id, "✅ Balans to'ldirildi!", true);
     } elseif ($status_w === 'pending') {
         answerCallback($callback_id, "⏳ To'lov hali amalga oshirilmagan.", true);
@@ -1499,10 +1499,10 @@ if ($callback_data === "referral") {
 if ($callback_data === "stars") {
 deleteMessage($chat_id, $message_id);
 $star_price = settings($connect)['star_price'];
-$p50   = number_format(50   * $star_price);
-$p100  = number_format(100  * $star_price);
-$p500  = number_format(500  * $star_price);
-$p1000 = number_format(1000 * $star_price);
+$p50   = number_format(50   * $star_price, 0, '.', ' ');
+$p100  = number_format(100  * $star_price, 0, '.', ' ');
+$p500  = number_format(500  * $star_price, 0, '.', ' ');
+$p1000 = number_format(1000 * $star_price, 0, '.', ' ');
 $reply = json_encode(['inline_keyboard' => [
 [['text' => "50 ⭐ — {$p50} so'm",    'callback_data' => "stars_50"],
  ['text' => "100 ⭐ — {$p100} so'm",  'callback_data' => "stars_100"]],
@@ -1525,7 +1525,7 @@ $parts = explode("_", $callback_data);
 $stars = intval($parts[1]);
 $star_price = settings($connect)['star_price'];
 $price = $stars * $star_price;
-$price_fmt = number_format($price);
+$price_fmt = number_format($price, 0, '.', ' ');
 save_step($chat_id, ['step' => 'stars_user', 'stars' => $stars]);
 $reply = json_encode(['inline_keyboard' => [
 [['text' => "👤 O'zimga", 'callback_data' => "self_user"],
@@ -1547,7 +1547,7 @@ $parts = explode("_", $callback_data);
 $months = intval($parts[1]);
 $settings = settings($connect);
 $price = $settings["premium_{$months}_month"];
-$price_fmt = number_format($price);
+$price_fmt = number_format($price, 0, '.', ' ');
 save_step($chat_id, ['step' => 'premium_user', 'months' => $months, 'price' => $price]);
 $reply = json_encode(['inline_keyboard' => [
 [['text' => "👤 O'zimga", 'callback_data' => "self_premium"],
@@ -1610,7 +1610,7 @@ exit;
 }
 $star_price = settings($connect)['star_price'];
 $price = $requested * $star_price;
-$price_fmt = number_format($price);
+$price_fmt = number_format($price, 0, '.', ' ');
 save_step($chat_id, ['step' => 'stars_user', 'stars' => $requested]);
 $reply = json_encode(['inline_keyboard' => [
 [['text' => "👤 O'zimga", 'callback_data' => "self_user"],
@@ -1702,7 +1702,7 @@ Masalan: <code>https://t.me/username</code>");
 
 🔗 Link: <code>{$link}</code>
 
-🔢 Miqdor kiriting (Min: <b>" . number_format($st['smm_min']) . "</b> | Max: <b>" . number_format($st['smm_max']) . "</b>):", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+🔢 Miqdor kiriting (Min: <b>" . number_format($st['smm_min'], 0, '.', ' ') . "</b> | Max: <b>" . number_format($st['smm_max'], 0, '.', ' ') . "</b>):", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
     exit;
 }
 
@@ -1713,7 +1713,7 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
     }
     $qty = intval($text);
     if ($qty < $st['smm_min'] || $qty > $st['smm_max']) {
-        sendMessage($chat_id, "⚠️ Miqdor <b>" . number_format($st['smm_min']) . "</b> dan <b>" . number_format($st['smm_max']) . "</b> gacha bo'lishi kerak!");
+        sendMessage($chat_id, "⚠️ Miqdor <b>" . number_format($st['smm_min'], 0, '.', ' ') . "</b> dan <b>" . number_format($st['smm_max'], 0, '.', ' ') . "</b> gacha bo'lishi kerak!");
         exit;
     }
     // Narxni SMM API dan olish
@@ -1766,8 +1766,8 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
                     $smm_oid2 = intval($smm_result2['order']);
                     mysqli_query($connect, "UPDATE smm_orders SET smm_order_id={$smm_oid2}, status='Pending' WHERE id={$rid_smm}");
                     sendMessage($chat_id, "✅ <b>Balansdan to'landi!</b>
-💰 " . number_format($som_price) . " so'm
-💳 Qolgan balans: <b>" . number_format($new_bal_smm) . " so'm</b>
+💰 " . number_format($som_price, 0, '.', ' ') . " so'm
+💳 Qolgan balans: <b>" . number_format($new_bal_smm, 0, '.', ' ') . " so'm</b>
 
 📋 SMM Buyurtma ID: <b>#{$smm_oid2}</b>
 ⏳ Xizmat bajarilmoqda...", json_encode(['inline_keyboard' => [[['text' => "📋 Buyurtmalarim", 'callback_data' => "smm_my_orders"]]]], JSON_UNESCAPED_UNICODE));
@@ -1781,10 +1781,10 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
             $needed_bal = $som_price - $user_bal;
             sendMessage($chat_id, "⚠️ <b>1,000 so'mdan past buyurtmalar faqat balansdan to'lanadi!</b>
 
-💰 Kerakli: " . number_format($som_price) . " so'm
-💳 Balans: " . number_format($user_bal) . " so'm
+💰 Kerakli: " . number_format($som_price, 0, '.', ' ') . " so'm
+💳 Balans: " . number_format($user_bal, 0, '.', ' ') . " so'm
 
-❗ Balansni <b>" . number_format($needed_bal) . " so'm</b> ga to'ldiring.", json_encode(['inline_keyboard' => [[['text' => "➕ Balansni to'ldirish", 'callback_data' => "wallet_topup"]]]], JSON_UNESCAPED_UNICODE));
+❗ Balansni <b>" . number_format($needed_bal, 0, '.', ' ') . " so'm</b> ga to'ldiring.", json_encode(['inline_keyboard' => [[['text' => "➕ Balansni to'ldirish", 'callback_data' => "wallet_topup"]]]], JSON_UNESCAPED_UNICODE));
             clear_step($chat_id); exit;
         }
     }
@@ -1792,15 +1792,15 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
     // 1000 so'm va undan yuqori — tanlash
     if ($user_bal >= $som_price) {
         $kb_smm_pay = [
-            [['text' => "💳 Balansdan (" . number_format($user_bal) . " so'm)", 'callback_data' => "smm_pay_balance"]],
+            [['text' => "💳 Balansdan (" . number_format($user_bal, 0, '.', ' ') . " so'm)", 'callback_data' => "smm_pay_balance"]],
             [['text' => "🏦 Karta orqali", 'callback_data' => "smm_pay_card"]],
             [['text' => "🔙 Bekor qilish", 'callback_data' => "smm_main"]],
         ];
         sendMessage($chat_id, "<b>💳 To'lov usulini tanlang</b>
 
 📱 " . mb_substr($smm_svc_name, 0, 40) . "
-💰 Narxi: <b>" . number_format($som_price) . " so'm</b>
-💳 Balansingiz: <b>" . number_format($user_bal) . " so'm</b>", json_encode(['inline_keyboard' => $kb_smm_pay], JSON_UNESCAPED_UNICODE));
+💰 Narxi: <b>" . number_format($som_price, 0, '.', ' ') . " so'm</b>
+💳 Balansingiz: <b>" . number_format($user_bal, 0, '.', ' ') . " so'm</b>", json_encode(['inline_keyboard' => $kb_smm_pay], JSON_UNESCAPED_UNICODE));
         // step ni saqlash
         $st['smm_final_price'] = $som_price;
         $st['smm_final_qty']   = $qty;
@@ -1861,16 +1861,16 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
 📋 Buyurtma #{$pay_insert_id}
 📌 Xizmat: " . mb_substr($smm_svc_name, 0, 45) . "
 🔗 Link: <code>{$smm_link}</code>
-🔢 Miqdor: <b>" . number_format($qty) . "</b>
-💲 1000 ta uchun: <b>" . number_format($rate_per_1000_som) . " so'm</b>
-💰 Jami: <b>" . number_format($som_price) . " so'm</b>
+🔢 Miqdor: <b>" . number_format($qty, 0, '.', ' ') . "</b>
+💲 1000 ta uchun: <b>" . number_format($rate_per_1000_som, 0, '.', ' ') . " so'm</b>
+💰 Jami: <b>" . number_format($som_price, 0, '.', ' ') . " so'm</b>
 
 ━━━━━━━━━━━━━━━
 💳 Karta: <code>5614683582279246</code>
-💵 To'lash kerak: <b>" . number_format($pay_amount) . " so'm</b>
+💵 To'lash kerak: <b>" . number_format($pay_amount, 0, '.', ' ') . " so'm</b>
 ━━━━━━━━━━━━━━━
 
-⚠️ Aynan <b>" . number_format($pay_amount) . " so'm</b> o'tkazing!
+⚠️ Aynan <b>" . number_format($pay_amount, 0, '.', ' ') . " so'm</b> o'tkazing!
 So'ng '♻️ To'lovni tekshirish' tugmasini bosing.", json_encode(['inline_keyboard' => $kb_smm], JSON_UNESCAPED_UNICODE));
     exit;
 }
@@ -2105,10 +2105,10 @@ function offer_payment_method($chat_id, $connect, $type) {
             $needed = $base_som - $bal;
             sendMessage($chat_id, "⚠️ <b>1,000 so'mdan past buyurtmalar faqat balansdan to'lanadi!</b>
 
-💰 Kerakli: " . number_format($base_som) . " so'm
-💳 Balansingiz: " . number_format($bal) . " so'm
+💰 Kerakli: " . number_format($base_som, 0, '.', ' ') . " so'm
+💳 Balansingiz: " . number_format($bal, 0, '.', ' ') . " so'm
 
-❗ Balansni kamida <b>" . number_format($needed) . " so'm</b> ga to'ldiring.", json_encode(['inline_keyboard' => [
+❗ Balansni kamida <b>" . number_format($needed, 0, '.', ' ') . " so'm</b> ga to'ldiring.", json_encode(['inline_keyboard' => [
                 [['text' => "➕ Balansni to'ldirish", 'callback_data' => "wallet_topup"]],
                 [['text' => "🔙 Orqaga", 'callback_data' => "menu"]],
             ]], JSON_UNESCAPED_UNICODE));
@@ -2119,16 +2119,16 @@ function offer_payment_method($chat_id, $connect, $type) {
     // 1000 so'm va undan yuqori — tanlash imkoniyati
     $kb_pay = [];
     if ($bal >= $base_som) {
-        $kb_pay[] = [['text' => "💳 Balansdan to'lash (" . number_format($bal) . " so'm)", 'callback_data' => "pay_balance_{$type}"]];
+        $kb_pay[] = [['text' => "💳 Balansdan to'lash (" . number_format($bal, 0, '.', ' ') . " so'm)", 'callback_data' => "pay_balance_{$type}"]];
     } elseif ($bal > 0) {
-        $kb_pay[] = [['text' => "💳 Balansdan to'lash (yetarli emas: " . number_format($bal) . " so'm)", 'callback_data' => "wallet_topup"]];
+        $kb_pay[] = [['text' => "💳 Balansdan to'lash (yetarli emas: " . number_format($bal, 0, '.', ' ') . " so'm)", 'callback_data' => "wallet_topup"]];
     }
     $kb_pay[] = [['text' => "🏦 Karta orqali to'lash", 'callback_data' => "pay_card_{$type}"]];
     $kb_pay[] = [['text' => "🔙 Orqaga", 'callback_data' => "menu"]];
     
     $type_txt = $type === 'stars' ? "⭐️ Stars" : "👑 Premium";
-    $bal_fmt  = number_format($bal);
-    $base_fmt = number_format($base_som);
+    $bal_fmt  = number_format($bal, 0, '.', ' ');
+    $base_fmt = number_format($base_som, 0, '.', ' ');
     $bal_status = $bal >= $base_som ? "✅ Yetarli" : "❌ Yetarli emas";
     sendMessage($chat_id, "<b>💳 To'lov usulini tanlang</b>
 
@@ -2158,8 +2158,8 @@ function pay_with_balance($chat_id, $connect, $type) {
         $bal = get_balance($chat_id, $connect);
         sendMessage($chat_id, "❌ <b>Balans yetarli emas!</b>
 
-💰 Kerakli: " . number_format($amount) . " so'm
-💳 Balans: " . number_format($bal) . " so'm", json_encode(['inline_keyboard' => [[['text' => "➕ Balansni to'ldirish", 'callback_data' => "wallet_topup"]]]], JSON_UNESCAPED_UNICODE));
+💰 Kerakli: " . number_format($amount, 0, '.', ' ') . " so'm
+💳 Balans: " . number_format($bal, 0, '.', ' ') . " so'm", json_encode(['inline_keyboard' => [[['text' => "➕ Balansni to'ldirish", 'callback_data' => "wallet_topup"]]]], JSON_UNESCAPED_UNICODE));
         return;
     }
     
@@ -2175,8 +2175,8 @@ function pay_with_balance($chat_id, $connect, $type) {
         $rid = mysqli_insert_id($connect);
         
         sendMessage($chat_id, "✅ <b>Balansdan to'landi!</b>
-💰 " . number_format($amount) . " so'm
-💳 Qolgan balans: <b>" . number_format($new_bal) . " so'm</b>
+💰 " . number_format($amount, 0, '.', ' ') . " so'm
+💳 Qolgan balans: <b>" . number_format($new_bal, 0, '.', ' ') . " so'm</b>
 
 📦 Xizmat bajarilmoqda...");
         
@@ -2206,8 +2206,8 @@ function pay_with_balance($chat_id, $connect, $type) {
         $rid = mysqli_insert_id($connect);
         
         sendMessage($chat_id, "✅ <b>Balansdan to'landi!</b>
-💰 " . number_format($amount) . " so'm
-💳 Qolgan balans: <b>" . number_format($new_bal) . " so'm</b>
+💰 " . number_format($amount, 0, '.', ' ') . " so'm
+💳 Qolgan balans: <b>" . number_format($new_bal, 0, '.', ' ') . " so'm</b>
 
 📦 Xizmat bajarilmoqda...");
         
@@ -2315,15 +2315,15 @@ sendMessage($chat_id, "<b>⭐️ Stars buyurtma</b>
 
 📋 Buyurtma #" . htmlspecialchars($insert_id ?? $order_code) . "
 🎯 Miqdor: <b>{$stars} ⭐️</b>
-💰 Narxi: <b>" . number_format($base_amount) . " so'm</b>
+💰 Narxi: <b>" . number_format($base_amount, 0, '.', ' ') . " so'm</b>
 👤 Qabul qiluvchi: <b>{$receiver}</b>
 
 ━━━━━━━━━━━━━━━
 💳 Karta: <code>5614683582279246</code>
-💵 To'lash kerak: <b>" . number_format($amount) . " so'm</b>
+💵 To'lash kerak: <b>" . number_format($amount, 0, '.', ' ') . " so'm</b>
 ━━━━━━━━━━━━━━━
 
-⚠️ Aynan <b>" . number_format($amount) . " so'm</b> o'tkazing!
+⚠️ Aynan <b>" . number_format($amount, 0, '.', ' ') . " so'm</b> o'tkazing!
 So'ng '♻️ To'lovni tekshirish' tugmasini bosing.", $keyboard);
 
 clear_step($chat_id);
