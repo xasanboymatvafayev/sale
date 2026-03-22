@@ -781,11 +781,11 @@ function smm_api($params) {
         error_log("SMM API curl error: " . $curl_err);
         return ["error" => "Ulanish xatoligi: " . $curl_err];
     }
-    if (!$result) return ['error' => 'Bo'sh javob'];
+    if (!$result) return ["error" => "Bosh javob"];
     $decoded = json_decode($result, true);
     if (!$decoded) {
         error_log("SMM API invalid JSON: " . $result);
-        return ['error' => 'Noto'g'ri javob: ' . substr($result, 0, 100)];
+        return ["error" => "Notogri javob: " . substr($result, 0, 100)];
     }
     return $decoded;
 }
