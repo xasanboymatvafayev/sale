@@ -20,6 +20,7 @@ define('NUMBER_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz nu
 define('NUMBER_API_URL', 'https://supersim.uz/api/v2');
 
 $card_number = "5614683582279246";
+$stars_card = "5614683582279246";
 
 $connect = mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME, DB_PORT);
 if (!$connect) {
