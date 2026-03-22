@@ -596,7 +596,6 @@ if ($callback_data === "admin_prices" && $from_id == $admin) {
 $settings = settings($connect);
 $smm_cfg_p = settings($connect);
 $smm_markup_now = intval($smm_cfg_p['smm_markup'] ?? 20);
-$smm_rate_now   = intval($smm_cfg_p['smm_usd_rate'] ?? 12700);
 $reply = json_encode(['inline_keyboard' => [
 [['text' => "⭐ Stars narxi: {$settings['star_price']} so'm", 'callback_data' => "edit_star_price"]],
 [['text' => "👑 1 oy: {$settings['premium_1_month']} so'm", 'callback_data' => "edit_premium_1"]],
@@ -604,7 +603,7 @@ $reply = json_encode(['inline_keyboard' => [
 [['text' => "👑 6 oy: {$settings['premium_6_month']} so'm", 'callback_data' => "edit_premium_6"]],
 [['text' => "👑 12 oy: {$settings['premium_12_month']} so'm", 'callback_data' => "edit_premium_12"]],
 [['text' => "📱 SMM Markup: {$smm_markup_now}%", 'callback_data' => "edit_smm_markup"]],
-[['text' => "💱 USD kurs: {$smm_rate_now} so'm", 'callback_data' => "edit_smm_rate"]],
+
 [['text' => "🔙 Orqaga", 'callback_data' => "admin_back"]]
 ]], JSON_UNESCAPED_UNICODE);
 editMessage($chat_id, $message_id, "<b>💰 Narxlarni o'zgartirish</b>\n\nO'zgartirmoqchi bo'lgan narxni tanlang:", $reply);
@@ -1048,16 +1047,15 @@ if ($callback_data && strpos($callback_data, "smm_svc_") === 0) {
     ]);
     $kb = [[['text' => "🔙 Orqaga", 'callback_data' => "smm_cat_{$cat_idx}"]]];
     // API dan narxni olish va ko'rsatish
-    $smm_cfg_s  = settings($connect);
-    $usd_rate_s = intval($smm_cfg_s['smm_usd_rate'] ?? 12700);
-    $markup_s   = intval($smm_cfg_s['smm_markup'] ?? 20);
+    $smm_cfg_s = settings($connect);
+    $markup_s  = intval($smm_cfg_s['smm_markup'] ?? 20);
     $svc_list_s = smm_api(['action' => 'services']);
     $rate_som_1000 = 0;
     if ($svc_list_s) {
         foreach ($svc_list_s as $sv_s) {
             if (intval($sv_s['service'] ?? 0) == intval($svc['id'])) {
                 $r_usd = floatval($sv_s['rate'] ?? 0);
-                $rate_som_1000 = intval($r_usd * $usd_rate_s * (1 + $markup_s / 100));
+                $rate_som_1000 = intval($r_usd * (1 + $markup_s / 100)); // API rate so'm da
                 break;
             }
         }
@@ -1731,19 +1729,18 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
     // API rate = USD per 1000 ta
     // Hujjatda ko'rsatilgan narx = 1000 tasi uchun so'm
     // Formulasi: (rate_usd_per_1000 * qty / 1000) * usd_kurs * (1 + markup%)
-    $smm_cfg      = settings($connect);
-    $usd_rate     = intval($smm_cfg['smm_usd_rate'] ?? 12700); // 1 USD = X so'm
-    $markup_pct   = intval($smm_cfg['smm_markup'] ?? 20);       // foiz qo'shimcha
-    $base_som     = ($svc_rate_usd * $qty / 1000) * $usd_rate;  // asosiy narx so'mda
-    $markup_som   = $base_som * $markup_pct / 100;              // qo'shimcha foiz
-    $som_price    = intval($base_som + $markup_som);
-    $som_price    = max($som_price, 500); // Minimum 500 so'm
-    $rand_num     = rand(1, 99);
-    $pay_amount   = $som_price + $rand_num;
+    $smm_cfg    = settings($connect);
+    $markup_pct = intval($smm_cfg['smm_markup'] ?? 20); // foiz qo'shimcha
+    // API rate allaqachon SO'M da (hujjatdagi narx bilan bir xil)
+    $base_som   = $svc_rate_usd * $qty / 1000;          // asosiy narx so'mda
+    $markup_som = $base_som * $markup_pct / 100;         // qo'shimcha foiz
+    $som_price  = intval($base_som + $markup_som);
+    $som_price  = max($som_price, 500);                  // Minimum 500 so'm
+    $rand_num   = rand(1, 99);
+    $pay_amount = $som_price + $rand_num;
     
-    // Foydalanuvchiga narx tafsilotlari
-    $rate_per_1000_som = intval($svc_rate_usd * $usd_rate); // 1000 tasi uchun so'm (bazaviy)
-    $rate_per_1_som    = round($svc_rate_usd * $usd_rate / 1000, 2); // 1 tasi uchun so'm
+    // Foydalanuvchiga ko'rsatish uchun
+    $rate_per_1000_som = intval($svc_rate_usd * (1 + $markup_pct / 100)); // 1000 tasi narxi (markup bilan)
 
     // Balans tekshirish
     $user_bal = get_balance($chat_id, $connect);
@@ -2005,20 +2002,7 @@ sendMessage($chat_id, "⚠️ 0 dan 500 gacha son kiriting!");
 exit;
 }
 
-if (!empty($st['step']) && $st['step'] === 'edit_smm_rate') {
-if (is_numeric($text) && intval($text) >= 1000) {
-$val = intval($text);
-$stmt = mysqli_prepare($connect, "UPDATE settings SET smm_usd_rate = ? WHERE id = 1");
-mysqli_stmt_bind_param($stmt, 'i', $val);
-mysqli_stmt_execute($stmt);
-mysqli_stmt_close($stmt);
-sendMessage($chat_id, "✅ USD kursi <b>{$val} so'm</b> ga o'zgartirildi!");
-clear_step($chat_id);
-} else {
-sendMessage($chat_id, "⚠️ Kamida 1000 so'm bo'lishi kerak!");
-}
-exit;
-}
+
 }
 }
 
