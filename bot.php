@@ -720,8 +720,8 @@ function smm_categories() {
             ['id' => 26,  'name' => '👫 TG Obunachi (365 Kun kafolat)',    'min' => 10,  'max' => 1000000],
             ['id' => 97,  'name' => '👤 TG Obunachilar (30 Kunlik) 🔥',   'min' => 500, 'max' => 200000],
             ['id' => 99,  'name' => '👤 TG Obunachilar (90 Kunlik) 🔥',   'min' => 100, 'max' => 50000],
-            ['id' => 141, 'name' => '🇺🇿 O'zbek Obunachilar (30 Kun)',    'min' => 100, 'max' => 15000],
-            ['id' => 143, 'name' => '🇺🇿 O'zbek Obunachilar (90 Kun)',    'min' => 10,  'max' => 15000],
+            ['id' => 141, 'name' => '🇺🇿 Uzbek Obunachilar (30 Kun)',    'min' => 100, 'max' => 15000],
+            ['id' => 143, 'name' => '🇺🇿 Uzbek Obunachilar (90 Kun)',    'min' => 10,  'max' => 15000],
         ],
         '👁 Telegram Ko'rishlar' => [
             ['id' => 168, 'name' => '👁 Post ko'rishlar (Eng arzoni)',     'min' => 50,  'max' => 10000],
