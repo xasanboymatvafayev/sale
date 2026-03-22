@@ -13,11 +13,11 @@ define("DB_PORT", 57444);
 define('CHECKCARD_SHOP_ID', '647282');   // @CheckCardUz_bot dan olingan shop id
 define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan shop key
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
-define('ISBOT_CHANNEL', '@Nitesms_isbotlar');   // Isbot kanali (muvaffaqiyatli buyurtmalar)
+define('ISBOT_CHANNEL', '@Nitesms');   // Isbot kanali (muvaffaqiyatli buyurtmalar)
 define('SMM_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz dan olingan API key
 define('SMM_API_URL', 'https://super-sim.uz/api/v2');
 define('NUMBER_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz number API key
-define('NUMBER_API_URL', 'https://super-sim.uz/api/v2');
+define('NUMBER_API_URL', 'https://supersim.uz/api/v2');
 
 $card_number = "5614683582279246";
 
@@ -1403,213 +1403,178 @@ if ($callback_data && strpos($callback_data, "smm_cancel_pay=") === 0) {
 }
 
 // ─── 📞 Virtual Nomer tizimi ─────────────────────────────────────────────────
-function number_api($action, $params = []) {
-    if (NUMBER_API_KEY === 'SIZNING_NUMBER_API_KEY') {
-        return ['error' => 'Number API key ornatilmagan! super-sim.uz saytidan oling.'];
-    }
-    $url = NUMBER_API_URL . '?action=' . $action . '&key=' . NUMBER_API_KEY;
-    foreach ($params as $k => $v) {
-        $url .= '&' . $k . '=' . urlencode($v);
-    }
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_TIMEOUT        => 30,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTPHEADER     => ['Accept: application/json', 'User-Agent: TelegramBot/1.0'],
-    ]);
-    $res = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_err  = curl_error($ch);
-    curl_close($ch);
-    if ($curl_err) return ['error' => 'Ulanish xatoligi: ' . $curl_err];
-    if ($http_code !== 200) return ['error' => "HTTP xatolik: {$http_code}"];
-    if (!$res) return ['error' => 'Bosh javob'];
-    $decoded = json_decode($res, true);
-    if (!$decoded) return ['error' => 'JSON xatoligi: ' . substr($res, 0, 100)];
-    return $decoded;
+// Reference: supersim.uz/api/v2 (file_get_contents usuli)
+
+function get_countries_list() {
+    $api = json_decode(file_get_contents(NUMBER_API_URL . "?action=countries&key=" . NUMBER_API_KEY), true);
+    return $api['countries'] ?? [];
 }
 
-// number_main — asosiy sahifa + davlatlar ro'yxati
-if ($callback_data === "number_main" || ($callback_data && strpos($callback_data, "numpage=") === 0)) {
-    $page = 0;
-    if ($callback_data && strpos($callback_data, "numpage=") === 0) {
-        $parts_np = explode("=", $callback_data);
-        $page = intval($parts_np[1] ?? 0);
-    }
-    $cfg_n = settings($connect);
-    $num_markup = intval($cfg_n['number_markup'] ?? 20);
-    $api_resp = number_api('countries');
-    if (!$api_resp || isset($api_resp['error']) || !isset($api_resp['countries'])) {
-        sendMessage($chat_id, "⚠️ API xatolik: " . ($api_resp['error'] ?? 'Davlatlar yuklanmadi'));
-        exit;
-    }
-    $countries = $api_resp['countries'];
-    $perPage = 10;
-    $total = count($countries);
+function render_countries_kb($countries, $page, $markup_pct) {
+    $perPage    = 10;
+    $total      = count($countries);
     $totalPages = ceil($total / $perPage);
-    $start = $page * $perPage;
-    $list = array_slice($countries, $start, $perPage);
+    $start      = $page * $perPage;
+    $list       = array_slice($countries, $start, $perPage);
     $kb = [];
     foreach ($list as $c) {
-        $price_raw = floatval($c['price_uzs'] ?? 0);
-        $price_with_markup = intval($price_raw * (1 + $num_markup / 100));
-        $kb[] = [['text' => "{$c['country_name']} — " . number_format($price_with_markup, 0, '.', ' ') . " so'm",
-                  'callback_data' => "numget={$price_with_markup}={$c['country_code']}={$c['country_name']}"]];
+        $price = intval(floatval($c['price_uzs']) * (1 + $markup_pct / 100));
+        $kb[]  = [['text' => "{$c['country_name']} — " . number_format($price, 0, '.', ' ') . " so'm",
+                   'callback_data' => "numget={$price}={$c['country_code']}={$c['country_name']}"]];
     }
     $nav = [];
-    if ($page > 0) $nav[] = ['text' => "⬅️", 'callback_data' => "numpage=" . ($page - 1)];
-    $nav[] = ['text' => ($page + 1) . "/{$totalPages}", 'callback_data' => "no_action"];
-    if ($start + $perPage < $total) $nav[] = ['text' => "➡️", 'callback_data' => "numpage=" . ($page + 1)];
+    if ($page > 0)                   $nav[] = ['text' => "⬅️", 'callback_data' => "numpage=" . ($page-1)];
+    $nav[] = ['text' => ($page+1) . "/{$totalPages}", 'callback_data' => "no_action"];
+    if ($start + $perPage < $total)  $nav[] = ['text' => "➡️", 'callback_data' => "numpage=" . ($page+1)];
     $kb[] = $nav;
     $kb[] = [['text' => "📊 TOP 10", 'callback_data' => "numtop10"], ['text' => "💸 Eng arzon", 'callback_data' => "numarzon"]];
     $kb[] = [['text' => "🔙 Orqaga", 'callback_data' => "menu"]];
-    $bal_n = get_balance($chat_id, $connect);
-    $txt_n = "<b>📞 Virtual Nomer olish</b>
+    return $kb;
+}
 
-💰 Balansingiz: <b>" . number_format($bal_n, 0, '.', ' ') . " so'm</b>
-
-🌍 Davlatni tanlang:";
-    $kb_json = json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE);
-    if ($message_id) {
-        editMessage($chat_id, $message_id, $txt_n, $kb_json);
-    } else {
-        sendMessage($chat_id, $txt_n, $kb_json);
+// number_main — asosiy sahifa
+if ($callback_data === "number_main") {
+    $page     = 0;
+    $cfg_n    = settings($connect);
+    $markup_n = intval($cfg_n['number_markup'] ?? 20);
+    $bal_n    = get_balance($chat_id, $connect);
+    $countries = get_countries_list();
+    if (empty($countries)) {
+        answerCallback($callback_id, "API xatolik, qayta urinib ko'ring", true); exit;
     }
+    $kb = render_countries_kb($countries, $page, $markup_n);
+    $txt = "<b>📞 Virtual Nomer olish</b>\n\n💰 Balansingiz: <b>" . number_format($bal_n, 0, '.', ' ') . " so'm</b>\n\n🌍 Davlatni tanlang:";
+    $message_id ? editMessage($chat_id, $message_id, $txt, json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE))
+                : sendMessage($chat_id, $txt, json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
     exit;
 }
 
-// TOP 10 va arzon
-if ($callback_data === "numtop10" || $callback_data === "numarzon") {
-    $cfg_n2 = settings($connect);
-    $num_markup2 = intval($cfg_n2['number_markup'] ?? 20);
-    $api_resp2 = number_api('countries');
-    if (!$api_resp2 || !isset($api_resp2['countries'])) { answerCallback($callback_id, "API xatolik", true); exit; }
-    $countries2 = $api_resp2['countries'];
-    if ($callback_data === "numarzon") {
-        usort($countries2, function($a, $b) { return floatval($a['price_uzs']) <=> floatval($b['price_uzs']); });
-        $title2 = "💸 Eng arzon 10 ta raqam";
-    } else {
-        shuffle($countries2);
-        $title2 = "📊 TOP 10 davlatlar";
-    }
-    $list2 = array_slice($countries2, 0, 10);
-    $kb2 = [];
-    foreach ($list2 as $c2) {
-        $p2 = intval(floatval($c2['price_uzs']) * (1 + $num_markup2 / 100));
-        $kb2[] = [['text' => "{$c2['country_name']} — " . number_format($p2, 0, '.', ' ') . " so'm",
-                   'callback_data' => "numget={$p2}={$c2['country_code']}={$c2['country_name']}"]];
-    }
-    $kb2[] = [['text' => "🔙 Orqaga", 'callback_data' => "number_main"]];
-    editMessage($chat_id, $message_id, "<b>{$title2}</b>", json_encode(['inline_keyboard' => $kb2], JSON_UNESCAPED_UNICODE));
+// Sahifalash
+if ($callback_data && strpos($callback_data, "numpage=") === 0) {
+    $page     = intval(str_replace("numpage=", "", $callback_data));
+    $cfg_n    = settings($connect);
+    $markup_n = intval($cfg_n['number_markup'] ?? 20);
+    $bal_n    = get_balance($chat_id, $connect);
+    $countries = get_countries_list();
+    if (empty($countries)) { answerCallback($callback_id, "API xatolik", true); exit; }
+    $kb  = render_countries_kb($countries, $page, $markup_n);
+    $txt = "<b>📞 Virtual Nomer olish</b>\n\n💰 Balansingiz: <b>" . number_format($bal_n, 0, '.', ' ') . " so'm</b>\n\n🌍 Davlatni tanlang:";
+    editMessage($chat_id, $message_id, $txt, json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
     exit;
 }
 
-// Nomer tasdiqlash
+// TOP 10
+if ($callback_data === "numtop10") {
+    $cfg_n    = settings($connect);
+    $markup_n = intval($cfg_n['number_markup'] ?? 20);
+    $countries = get_countries_list();
+    shuffle($countries);
+    $list = array_slice($countries, 0, 10);
+    $kb = [];
+    foreach ($list as $c) {
+        $price = intval(floatval($c['price_uzs']) * (1 + $markup_n / 100));
+        $kb[]  = [['text' => "{$c['country_name']} — " . number_format($price, 0, '.', ' ') . " so'm",
+                   'callback_data' => "numget={$price}={$c['country_code']}={$c['country_name']}"]];
+    }
+    $kb[] = [['text' => "🔙 Orqaga", 'callback_data' => "number_main"]];
+    editMessage($chat_id, $message_id, "<b>📊 TOP 10 davlatlar</b>", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+// Eng arzon
+if ($callback_data === "numarzon") {
+    $cfg_n    = settings($connect);
+    $markup_n = intval($cfg_n['number_markup'] ?? 20);
+    $countries = get_countries_list();
+    usort($countries, function($a, $b) { return floatval($a['price_uzs']) <=> floatval($b['price_uzs']); });
+    $list = array_slice($countries, 0, 10);
+    $kb = [];
+    foreach ($list as $c) {
+        $price = intval(floatval($c['price_uzs']) * (1 + $markup_n / 100));
+        $kb[]  = [['text' => "{$c['country_name']} — " . number_format($price, 0, '.', ' ') . " so'm",
+                   'callback_data' => "numget={$price}={$c['country_code']}={$c['country_name']}"]];
+    }
+    $kb[] = [['text' => "🔙 Orqaga", 'callback_data' => "number_main"]];
+    editMessage($chat_id, $message_id, "<b>💸 Eng arzon 10 ta raqam</b>", json_encode(['inline_keyboard' => $kb], JSON_UNESCAPED_UNICODE));
+    exit;
+}
+
+// Davlat tanlandi — tasdiqlash
 if ($callback_data && strpos($callback_data, "numget=") === 0) {
-    $parts_g = explode("=", $callback_data);
+    $parts_g   = explode("=", $callback_data);
     $price_g   = intval($parts_g[1] ?? 0);
     $code_g    = $parts_g[2] ?? '';
-    $country_g = $parts_g[3] ?? '';
-    $bal_g = get_balance($chat_id, $connect);
+    $country_g = urldecode($parts_g[3] ?? '');
+    $bal_g     = get_balance($chat_id, $connect);
     if ($bal_g < $price_g) {
-        $need = $price_g - $bal_g;
-        answerCallback($callback_id, "Balans yetarli emas! " . number_format($need, 0, '.', ' ') . " so'm yetishmaydi", true);
+        answerCallback($callback_id, "Balans yetarli emas! " . number_format($price_g - $bal_g, 0, '.', ' ') . " so'm yetishmaydi", true);
         exit;
     }
     $kb_g = [
-        [['text' => "✅ Tasdiqlash", 'callback_data' => "numconfirm={$price_g}={$code_g}"]],
-        [['text' => "❌ Bekor qilish", 'callback_data' => "number_main"]],
+        [['text' => "✅ Tasdiqlash",    'callback_data' => "numconfirm={$price_g}={$code_g}={$country_g}"]],
+        [['text' => "🚫 Bekor qilish",  'callback_data' => "number_main"]],
     ];
     editMessage($chat_id, $message_id,
-        "<b>📞 Buyurtmani tasdiqlang</b>
-
-🌍 Davlat: <b>{$country_g}</b>
-💰 Narxi: <b>" . number_format($price_g, 0, '.', ' ') . " so'm</b>
-
-💳 Balansingizdan ayiriladi.
-⚠️ Raqam olingach bekor qilib bo'lmaydi!",
+        "<b>📋 Buyurtmangizni tasdiqlang</b>\n\n🌍 Davlat: <b>{$country_g}</b>\n💰 Narxi: <b>" . number_format($price_g, 0, '.', ' ') . " so'm</b>\n\nRaqam olingach bekor qilib bo'lmaydi!",
         json_encode(['inline_keyboard' => $kb_g], JSON_UNESCAPED_UNICODE));
     exit;
 }
 
-// Nomer olish — tasdiqlash
+// Tasdiqlash — raqam olish
 if ($callback_data && strpos($callback_data, "numconfirm=") === 0) {
-    $parts_c = explode("=", $callback_data);
-    $price_c = intval($parts_c[1] ?? 0);
-    $code_c  = $parts_c[2] ?? '';
-    // Balansdan ayirish
-    $deducted_n = deduct_balance($chat_id, $price_c, $connect);
-    if (!$deducted_n) {
+    $parts_c   = explode("=", $callback_data);
+    $price_c   = intval($parts_c[1] ?? 0);
+    $code_c    = $parts_c[2] ?? '';
+    $country_c = urldecode($parts_c[3] ?? '');
+    $bal_c     = get_balance($chat_id, $connect);
+    if ($bal_c < $price_c) {
         answerCallback($callback_id, "Balans yetarli emas!", true); exit;
     }
-    // API dan nomer olish
-    $num_resp = number_api('getnum', ['code' => $code_c]);
-    if (!$num_resp || !isset($num_resp['phone'])) {
-        add_balance($chat_id, $price_c, $connect); // qaytarish
-        $err_n = $num_resp['error'] ?? json_encode($num_resp);
-        deleteMessage($chat_id, $message_id);
-        sendMessage($chat_id, "⚠️ <b>Raqam olishda xatolik!</b>
-
-Xato: <code>{$err_n}</code>
-
-Balansingiz qaytarildi.");
-        sendMessage($admin, "⚠️ Number API xato
-User: {$chat_id}
-Kod: {$code_c}
-Xato: {$err_n}");
-        exit;
+    // Raqamni olish (avval API, keyin balansdan ayirish)
+    $api_url  = NUMBER_API_URL . "?action=getnum&key=" . NUMBER_API_KEY . "&code=" . urlencode($code_c);
+    $api_data = json_decode(file_get_contents($api_url), true);
+    if (!$api_data || empty($api_data['phone'])) {
+        answerCallback($callback_id, "Raqam qolmagan yoki xatolik!", true); exit;
     }
-    $phone_n = $num_resp['phone'];
-    $hash_n  = $num_resp['hash'];
-    $new_bal_n = get_balance($chat_id, $connect);
-    deleteMessage($chat_id, $message_id);
+    // Balansdan ayirish
+    $deducted_c = deduct_balance($chat_id, $price_c, $connect);
+    if (!$deducted_c) {
+        answerCallback($callback_id, "Balans yetarli emas!", true); exit;
+    }
+    $phone_c   = $api_data['phone'];
+    $hash_c    = $api_data['hash'];
+    $new_bal_c = get_balance($chat_id, $connect);
     $kb_sms = [
-        [['text' => "🔢 SMS kodni olish", 'callback_data' => "numsms={$hash_n}"]],
-        [['text' => "🔙 Bosh menyu", 'callback_data' => "menu"]],
+        [['text' => "🔢 KODni olish", 'callback_data' => "numsms={$hash_c}"]],
+        [['text' => "🔙 Bosh menyu",  'callback_data' => "menu"]],
     ];
+    deleteMessage($chat_id, $message_id);
     sendMessage($chat_id,
-        "✅ <b>Raqam muvaffaqiyatli olindi!</b>
-
-📞 Raqamingiz: <code>{$phone_n}</code>
-
-Raqamni Telegram ilovasiga kiriting va SMS kodni oling.
-
-💳 Qolgan balans: <b>" . number_format($new_bal_n, 0, '.', ' ') . " so'm</b>
-
-⚠️ 2-bosqichli parolni 1.5 kundan keyin qo'ying!",
+        "✅ <b>Muvaffaqiyatli. Raqam olindi!</b>\n\nRaqamni hohlagan Telegram ilovasiga kiriting va SMS kodni oling.\n\n⚠️ Raqam spam bo'lishi mumkin!\n2-bosqichli parolni 1.5 kundan keyin qo'ying, aks holda raqam bloklanishi mumkin.\n\n📞 Sizning raqamingiz: <code>{$phone_c}</code>\n\n💳 Qolgan balans: <b>" . number_format($new_bal_c, 0, '.', ' ') . " so'm</b>",
         json_encode(['inline_keyboard' => $kb_sms], JSON_UNESCAPED_UNICODE));
-    send_isbot('number', ['phone' => $phone_n, 'country' => '', 'price' => $price_c, 'user_id' => $chat_id]);
+    send_isbot('number', ['phone' => $phone_c, 'country' => $country_c, 'price' => $price_c, 'user_id' => $chat_id]);
     exit;
 }
 
 // SMS kodni olish
 if ($callback_data && strpos($callback_data, "numsms=") === 0) {
-    $hash_s = str_replace("numsms=", "", $callback_data);
-    $sms_resp = number_api('getsms', ['hash' => $hash_s]);
-    if (!$sms_resp || !isset($sms_resp['sms'])) {
+    $hash_s   = str_replace("numsms=", "", $callback_data);
+    $api_url  = NUMBER_API_URL . "?action=getsms&key=" . NUMBER_API_KEY . "&hash=" . urlencode($hash_s);
+    $api_data = json_decode(file_get_contents($api_url), true);
+    if (!$api_data || empty($api_data['sms'])) {
         answerCallback($callback_id, "SMS kod hali kelmadi. Biroz kuting va qayta urinib ko'ring.", true);
         exit;
     }
-    $sms_code = $sms_resp['sms'];
-    $sms_pass = $sms_resp['password'] ?? '';
-    $kb_sms2 = [
+    $sms_code = $api_data['sms'];
+    $sms_pass = $api_data['password'] ?? '';
+    $kb_sms2  = [
         [['text' => "🔄 Qayta tekshirish", 'callback_data' => "numsms={$hash_s}"]],
-        [['text' => "🔙 Bosh menyu", 'callback_data' => "menu"]],
+        [['text' => "🔙 Bosh menyu",       'callback_data' => "menu"]],
     ];
     editMessage($chat_id, $message_id,
-        "✅ <b>SMS kod keldi!</b>
-
-🔢 SMS: <code>{$sms_code}</code>" .
-        ($sms_pass ? "
-🔑 Parol: <code>{$sms_pass}</code>" : "") .
-        "
-
-✅ Kodni kiriting va hisobingizga kiring!",
+        "✅ <b>SMS kod keldi!</b>\n\nSMS: <code>{$sms_code}</code>" .
+        ($sms_pass ? "\nParol: <code>{$sms_pass}</code>" : "") .
+        "\n\nKodni kiriting va hisobingizga kiring!",
         json_encode(['inline_keyboard' => $kb_sms2], JSON_UNESCAPED_UNICODE));
     exit;
 }
