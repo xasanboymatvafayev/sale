@@ -761,7 +761,7 @@ function smm_api($params) {
     // API key tekshirish
     if (SMM_API_KEY === 'SIZNING_SMM_API_KEY') {
         error_log("SMM_API_KEY o'rnatilmagan!");
-        return ['error' => 'SMM API key o'rnatilmagan! Admin paneldan sozlang.'];
+        return ["error" => "SMM API key ornatilmagan! Admin paneldan sozlang."];
     }
     $post_data = array_merge(['key' => SMM_API_KEY], $params);
     $_post = [];
@@ -779,7 +779,7 @@ function smm_api($params) {
     curl_close($ch);
     if ($curl_err) {
         error_log("SMM API curl error: " . $curl_err);
-        return ['error' => 'Ulanish xatoligi: ' . $curl_err];
+        return ["error" => "Ulanish xatoligi: " . $curl_err];
     }
     if (!$result) return ['error' => 'Bo'sh javob'];
     $decoded = json_decode($result, true);
