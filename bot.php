@@ -10,8 +10,8 @@ define("DB_USERNAME", "root");
 define("DB_PASSWORD", "SngtdKxJGJMafHfetMzLBszTQwMprNwi");
 define("DB_NAME", "railway");
 define("DB_PORT", 57444);
-define('CHECKCARD_SHOP_ID', '647282');   // @CheckCardUz_bot dan olingan shop id
-define('CHECKCARD_SHOP_KEY', '884UESPA3H'); // @CheckCardUz_bot dan olingan shop key
+define('CHECKOUT_API_KEY', 'YOUR_CHECKOUT_UZ_API_KEY'); // checkout.uz dashboard → kassa sozlamalari → API
+define('CHECKOUT_BASE_URL', 'https://checkout.uz/api/v1'); // asosiy manzil (backup: https://pre-view.checkout.uz/api/v1)
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
 define('ISBOT_CHANNEL', '@Nitesms_isbotlar');   // Isbot kanali (muvaffaqiyatli buyurtmalar)
 define('SMM_API_KEY', '64b8fca12bd3982138052842c5766b4b'); // super-sim.uz dan olingan API key
@@ -29,44 +29,97 @@ if (!$connect) {
 }
 mysqli_set_charset($connect, "utf8mb4");
 
-// ─── Faqat shu class o'zgartirildi: ProHamyonPay → CheckCardPay ─────────────
-class CheckCardPay {
-    private $shop_id;
-    private $shop_key;
+// ─── To'lov tizimi: CheckCard.uz → CHECKOUT.UZ ga o'zgartirildi ─────────────
+// Hujjat: https://checkout.uz/api-docs (POST, JSON, Bearer token bilan)
+//
+// Eski CheckCardPay bilan bir xil "interfeys" saqlab qolindi (create_checkout /
+// check_payment / cancel_payment, va create_checkout/check_payment JSON-string
+// qaytaradi), shuning uchun butun botdagi chaqiruv joylarini minimal o'zgartirish
+// bilan yangi tizimga ko'chirish mumkin bo'ldi.
+class CheckoutUzPay {
+    private $api_key;
+    private $base_url;
 
-    public function __construct($shop_id, $shop_key) {
-        $this->shop_id  = $shop_id;
-        $this->shop_key = $shop_key;
+    public function __construct($api_key, $base_url = CHECKOUT_BASE_URL) {
+        $this->api_key  = $api_key;
+        $this->base_url = rtrim($base_url, '/');
     }
 
-    // GET so'rov — checkcard.uz rasmiy namunasi asosida
-    public function create_checkout($amount) {
-        $api_url = "https://checkcard.uz/api?method=create&shop_id=" . urlencode($this->shop_id) . "&shop_key=" . urlencode($this->shop_key) . "&amount=" . intval($amount) . "&payurl=true";
-        $response = @file_get_contents($api_url);
-        if ($response === false) {
-            error_log("CheckCard create failed, amount=" . $amount);
+    private function request($method, $payload = []) {
+        $ch = curl_init($this->base_url . '/' . $method);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $this->api_key,
+            'Content-Type: application/json',
+        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+        $res = curl_exec($ch);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($res === false) {
+            error_log("CHECKOUT.UZ {$method} curl error: " . $err);
             return false;
         }
-        return $response;
+        return $res;
     }
 
-    public function check_payment($order_code) {
-        $api_url = "https://checkcard.uz/api?method=check&order=" . urlencode($order_code);
-        $response = @file_get_contents($api_url);
-        if ($response === false) {
-            error_log("CheckCard check payment failed for order: " . $order_code);
-            return false;
+    // Yangi invoys (to'lov havolasi) yaratish.
+    // Eski kod bilan mos bo'lishi uchun natija JSON-string sifatida qaytariladi:
+    // {"status":"success","order":<id>,"insert_id":<id>,"pay_url":"..."}
+    // yoki xato bo'lsa: {"status":"error","message":"..."}
+    public function create_checkout($amount, $description = null) {
+        $payload = ['amount' => intval($amount)];
+        if ($description) $payload['description'] = $description;
+
+        $raw = $this->request('create_payment', $payload);
+        if ($raw === false) {
+            return json_encode(['status' => 'error', 'message' => "Ulanish xatoligi"]);
         }
-        return $response;
+        $data = json_decode($raw, true);
+        if (!$data || ($data['status'] ?? '') !== 'success' || empty($data['payment'])) {
+            $msg = $data['error'] ?? 'CHECKOUT.UZ xatolik';
+            error_log("CHECKOUT.UZ create_payment error: " . $raw);
+            return json_encode(['status' => 'error', 'message' => $msg]);
+        }
+        $p = $data['payment'];
+        // Callback_data 64 bayt limiti uchun UUID emas, qisqa numeric ID ishlatamiz.
+        return json_encode([
+            'status'    => 'success',
+            'order'     => $p['_id'],
+            'insert_id' => $p['_id'],
+            'pay_url'   => $p['_url'] ?? null,
+        ]);
     }
 
-    public function cancel_payment($order_code) {
-        $api_url = "https://checkcard.uz/api?method=cancel&order=" . urlencode($order_code);
-        @file_get_contents($api_url);
+    // To'lov holatini tekshirish (order_id — create_checkout'dan qaytgan 'order').
+    // checkout.uz javobi allaqachon eski kod kutgan shaklda keladi:
+    // {"status":"success","data":{"id":...,"amount":...,"status":"paid"|"pending",...}}
+    public function check_payment($order_id) {
+        $raw = $this->request('status_payment', ['id' => intval($order_id)]);
+        if ($raw === false) {
+            return json_encode(['status' => 'error', 'message' => "Ulanish xatoligi"]);
+        }
+        return $raw;
+    }
+
+    // CHECKOUT.UZ da alohida "cancel" endpointi yo'q — to'lanmagan invoyslar
+    // o'zi 1 soatdan keyin muddati tugab bekor bo'ladi. Shu sabab bu funksiya
+    // faqat lokal DB holatini yangilash uchun no-op sifatida qoldirildi.
+    public function cancel_payment($order_id) {
+        // Hech narsa qilinmaydi — checkout.uz avtomatik expiration bilan ishlaydi.
+        return true;
+    }
+
+    public function get_balance() {
+        $raw = $this->request('get_balance');
+        return $raw ? json_decode($raw, true) : null;
     }
 }
 
-$CheckCardPay = new CheckCardPay(CHECKCARD_SHOP_ID, CHECKCARD_SHOP_KEY);
+$CheckoutPay = new CheckoutUzPay(CHECKOUT_API_KEY);
 
 function bot($method, $datas = []) {
     $url = "https://api.telegram.org/bot" . API_KEY . "/" . $method;
@@ -1062,25 +1115,22 @@ function send_isbot($type, $data) {
 
 // ─── Balans to'ldirish funksiyasi ────────────────────────────────────────────
 function process_wallet_topup($chat_id, $connect, $amount) {
-    global $CheckCardPay, $stars_card;
+    global $CheckoutPay;
     if ($amount < 1000) {
         sendMessage($chat_id, "⚠️ Minimal to'ldirish miqdori <b>1,000 so'm</b>!");
         return;
     }
-    $rand_num   = rand(1, 99);
-    $pay_amount = $amount + $rand_num;
+    if ($amount > 10000000) {
+        sendMessage($chat_id, "⚠️ Maksimal to'ldirish miqdori <b>10,000,000 so'm</b>!");
+        return;
+    }
 
-    $resp_w = $CheckCardPay->create_checkout($pay_amount);
+    $resp_w = $CheckoutPay->create_checkout($amount, "Balans to'ldirish — {$chat_id}");
     $data_w = $resp_w ? json_decode($resp_w, true) : null;
 
     if (!$data_w || ($data_w['status'] ?? '') === 'error') {
         $err = $data_w['message'] ?? 'Xatolik';
-        if (stripos($err, 'pending') !== false) {
-            sendMessage($chat_id, "⚠️ Bu miqdorda kutilayotgan to'lov mavjud.
-💡 " . ($pay_amount + 500) . " so'm miqdorida urinib ko'ring.");
-        } else {
-            sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik: {$err}");
-        }
+        sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik: {$err}");
         return;
     }
 
@@ -1109,12 +1159,9 @@ function process_wallet_topup($chat_id, $connect, $amount) {
 📋 Buyurtma #{$insert_id_w}
 💰 To'ldirish: <b>" . number_format($amount, 0, '.', ' ') . " so'm</b>
 
-━━━━━━━━━━━━━━━
-💳 Karta: <code>{$stars_card}</code>
-💵 To'lash kerak: <b>" . number_format($pay_amount, 0, '.', ' ') . " so'm</b>
-━━━━━━━━━━━━━━━
+👇 Quyidagi tugma orqali to'lov sahifasiga o'ting va Click, Payme yoki bank kartasi orqali to'lang.
 
-⚠️ Aynan <b>" . number_format($pay_amount, 0, '.', ' ') . " so'm</b> o'tkazing!
+⏰ Havola 1 soat davomida amal qiladi.
 So'ng '♻️ To'lovni tekshirish' tugmasini bosing.", json_encode(['inline_keyboard' => $kb_w], JSON_UNESCAPED_UNICODE));
 }
 
@@ -1174,14 +1221,14 @@ Xato: {$smm_err1}");
 
 if ($callback_data === "smm_pay_card") {
     $st = load_step($chat_id);
-    $pay_amount = intval($st['smm_pay_amount'] ?? 0);
+    $pay_amount = intval($st['smm_final_price'] ?? 0);
     if (!$pay_amount) { answerCallback($callback_id, "❌ Buyurtma topilmadi!", true); exit; }
     deleteMessage($chat_id, $message_id);
     // Karta orqali to'lov yaratish (smm_enter_qty bosqichidan davom etish)
     $st['step'] = 'smm_card_pay';
     save_step($chat_id, $st);
-    // Qayta to'lov yaratish
-    $pay_resp2 = $CheckCardPay->create_checkout($pay_amount);
+    // CHECKOUT.UZ orqali to'lov yaratish
+    $pay_resp2 = $CheckoutPay->create_checkout($pay_amount, "SMM buyurtma — {$chat_id}");
     $pay_data2 = $pay_resp2 ? json_decode($pay_resp2, true) : null;
     if (!$pay_data2 || ($pay_data2['status'] ?? '') === 'error') {
         sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik."); clear_step($chat_id); exit;
@@ -1203,10 +1250,9 @@ if ($callback_data === "smm_pay_card") {
     $kb_c[] = [['text' => "♻️ To'lovni tekshirish", 'callback_data' => "smm_check_pay={$oc2}"]];
     $kb_c[] = [['text' => "❌ Bekor qilish", 'callback_data' => "smm_cancel_pay={$oc2}"]];
     sendMessage($chat_id, "<b>📱 SMM Buyurtma #{$ii2}</b>
-💳 Karta: <code>5614683582279246</code>
-💵 To'lov miqdori: <b><u>{$pay_amount} so'm</u></b>
+💰 To'lov miqdori: <b><u>" . number_format($pay_amount, 0, '.', ' ') . " so'm</u></b>
 
-⚠️ Aynan shu miqdorni o'tkazing!", json_encode(['inline_keyboard' => $kb_c], JSON_UNESCAPED_UNICODE));
+👇 To'lov sahifasiga o'ting va Click, Payme yoki bank kartasi orqali to'lang.", json_encode(['inline_keyboard' => $kb_c], JSON_UNESCAPED_UNICODE));
     clear_step($chat_id);
     answerCallback($callback_id, "", false);
     exit;
@@ -1338,7 +1384,7 @@ if ($callback_data && strpos($callback_data, "smm_check_pay=") === 0) {
     if (!$smm_row) { answerCallback($callback_id, "❌ Buyurtma topilmadi!", true); exit; }
     if ($smm_row['payment_status'] === 'paid') { answerCallback($callback_id, "✅ Allaqachon to'langan!", true); exit; }
 
-    $raw_smm = $CheckCardPay->check_payment($smm_order_code);
+    $raw_smm = $CheckoutPay->check_payment($smm_order_code);
     $result_smm = $raw_smm ? json_decode($raw_smm, true) : null;
     if (!$result_smm || ($result_smm['status'] ?? '') !== 'success') {
         answerCallback($callback_id, "⚠️ To'lovni tekshirishda xatolik.", true); exit;
@@ -1396,7 +1442,7 @@ if ($callback_data && strpos($callback_data, "smm_cancel_pay=") === 0) {
     $smm_cancel_row = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM smm_orders WHERE payment_order='" . mysqli_real_escape_string($connect, $smm_cancel_code) . "' AND payment_status='unpaid' LIMIT 1"));
     if (!$smm_cancel_row) { answerCallback($callback_id, "❌ Topilmadi yoki allaqachon o'zgargan!", true); exit; }
     mysqli_query($connect, "UPDATE smm_orders SET payment_status='cancel' WHERE id={$smm_cancel_row['id']}");
-    $CheckCardPay->cancel_payment($smm_cancel_code);
+    $CheckoutPay->cancel_payment($smm_cancel_code);
     deleteMessage($chat_id, $message_id);
     sendMessage($chat_id, "❌ <b>Buyurtma bekor qilindi.</b>", json_encode(['inline_keyboard' => [[['text' => "🔙 SMM Panel", 'callback_data' => "smm_main"]]]], JSON_UNESCAPED_UNICODE));
     answerCallback($callback_id, "Bekor qilindi.", true);
@@ -1680,7 +1726,7 @@ if ($callback_data && strpos($callback_data, "wallet_check=") === 0) {
         answerCallback($callback_id, $top_row && $top_row['status'] === 'paid' ? "✅ Allaqachon qo'shilgan!" : "❌ Topilmadi!", true);
         exit;
     }
-    $raw_w = $CheckCardPay->check_payment($order_code_w);
+    $raw_w = $CheckoutPay->check_payment($order_code_w);
     $res_w = $raw_w ? json_decode($raw_w, true) : null;
     if (!$res_w || ($res_w['status'] ?? '') !== 'success') {
         answerCallback($callback_id, "⚠️ Tekshirishda xatolik.", true); exit;
@@ -1721,7 +1767,7 @@ if ($callback_data && strpos($callback_data, "wallet_cancel=") === 0) {
     $top_row_c = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM top_up WHERE order_code='" . mysqli_real_escape_string($connect, $order_code_wc) . "' AND status='unpaid' LIMIT 1"));
     if (!$top_row_c) { answerCallback($callback_id, "❌ Topilmadi!", true); exit; }
     mysqli_query($connect, "UPDATE top_up SET status='cancel' WHERE order_code='" . mysqli_real_escape_string($connect, $order_code_wc) . "'");
-    $CheckCardPay->cancel_payment($order_code_wc);
+    $CheckoutPay->cancel_payment($order_code_wc);
     deleteMessage($chat_id, $message_id);
     sendMessage($chat_id, "❌ To'ldirish bekor qilindi.", json_encode(['inline_keyboard' => [[['text' => "💳 Balans", 'callback_data' => "wallet_main"]]]], JSON_UNESCAPED_UNICODE));
     answerCallback($callback_id, "Bekor qilindi.", true);
@@ -2178,9 +2224,7 @@ if (!empty($st['step']) && $st['step'] === "smm_enter_qty") {
     $markup_som = $base_som * $markup_pct / 100;         // qo'shimcha foiz
     $som_price  = intval($base_som + $markup_som);
     $som_price  = max($som_price, 500);                  // Minimum 500 so'm
-    $rand_num   = rand(1, 99);
-    $pay_amount = $som_price + $rand_num;
-    
+
     // Foydalanuvchiga ko'rsatish uchun
     $rate_per_1000_som = intval($svc_rate_usd * (1 + $markup_pct / 100)); // 1000 tasi narxi (markup bilan)
 
@@ -2255,25 +2299,18 @@ Xato: {$smm_err2}");
         $st['smm_final_price'] = $som_price;
         $st['smm_final_qty']   = $qty;
         $st['smm_final_link']  = $st['smm_link'];
-        $st['smm_pay_amount']  = $pay_amount;
         $st['step'] = 'smm_choose_pay';
         save_step($chat_id, $st);
         exit;
     }
 
-    // CheckCard orqali to'lov yaratish
-    $pay_resp = $CheckCardPay->create_checkout($pay_amount);
+    // CHECKOUT.UZ orqali to'lov yaratish
+    $pay_resp = $CheckoutPay->create_checkout($som_price, "SMM buyurtma — {$chat_id}");
     $pay_data = $pay_resp ? json_decode($pay_resp, true) : null;
 
     if (!$pay_data || ($pay_data['status'] ?? '') === 'error') {
         $err = $pay_data['message'] ?? 'API xatolik';
-        if (stripos($err, 'pending') !== false) {
-            sendMessage($chat_id, "⚠️ Bu miqdorda kutilayotgan to'lov mavjud.
-
-💡 {$pay_amount} so'm o'rniga " . ($pay_amount + 500) . " so'm miqdorida qayta urinib ko'ring.");
-        } else {
-            sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik: {$err}");
-        }
+        sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik: {$err}");
         exit;
     }
 
@@ -2292,7 +2329,7 @@ Xato: {$smm_err2}");
     $smm_svc_name = $st['smm_service_name'];
     $smm_link = $st['smm_link'];
     $smm_qty = intval($qty);
-    $smm_price = intval($pay_amount);
+    $smm_price = intval($som_price);
     $smm_pay_order = $pay_order_code;
     $ins_smm = mysqli_prepare($connect, "INSERT INTO smm_orders (user_id, service_id, service_name, link, quantity, price, status, payment_order, payment_status) VALUES (?,?,?,?,?,?,'pending',?,'unpaid')");
     mysqli_stmt_bind_param($ins_smm, 'iissiis', $smm_uid, $smm_svc_id, $smm_svc_name, $smm_link, $smm_qty, $smm_price, $smm_pay_order);
@@ -2315,12 +2352,7 @@ Xato: {$smm_err2}");
 💲 1000 ta uchun: <b>" . number_format($rate_per_1000_som, 0, '.', ' ') . " so'm</b>
 💰 Jami: <b>" . number_format($som_price, 0, '.', ' ') . " so'm</b>
 
-━━━━━━━━━━━━━━━
-💳 Karta: <code>5614683582279246</code>
-💵 To'lash kerak: <b>" . number_format($pay_amount, 0, '.', ' ') . " so'm</b>
-━━━━━━━━━━━━━━━
-
-⚠️ Aynan <b>" . number_format($pay_amount, 0, '.', ' ') . " so'm</b> o'tkazing!
+👇 To'lov sahifasiga o'ting va Click, Payme yoki bank kartasi orqali to'lang.
 So'ng '♻️ To'lovni tekshirish' tugmasini bosing.", json_encode(['inline_keyboard' => $kb_smm], JSON_UNESCAPED_UNICODE));
     exit;
 }
@@ -2792,8 +2824,8 @@ if (empty($step['stars']) || empty($step['receiver'])) {
 sendMessage($chat_id, "⚠️ Buyurtma to'liq emas. Iltimos miqdor va username kiriting.");
 return;
 }
-sendMessage($chat_id, "<b>💳 To'lov yaratilmoqda — CheckCard orqali. Iltimos kuting...</b>");
-process_checkcard_payment($chat_id, $connect);
+sendMessage($chat_id, "<b>💳 To'lov yaratilmoqda — CHECKOUT.UZ orqali. Iltimos kuting...</b>");
+process_checkout_payment($chat_id, $connect);
 }
 
 function process_premium_order($chat_id, $connect, $card_number) {
@@ -2802,20 +2834,18 @@ if (empty($step['months']) || empty($step['receiver'])) {
 sendMessage($chat_id, "⚠️ Buyurtma to'liq emas. Iltimos muddat va username kiriting.");
 return;
 }
-sendMessage($chat_id, "<b>💳 To'lov yaratilmoqda — CheckCard orqali. Iltimos kuting...</b>");
-process_premium_checkcard_payment($chat_id, $connect);
+sendMessage($chat_id, "<b>💳 To'lov yaratilmoqda — CHECKOUT.UZ orqali. Iltimos kuting...</b>");
+process_premium_checkout_payment($chat_id, $connect);
 }
 
-function process_checkcard_payment($chat_id, $connect) {
-global $CheckCardPay;
+function process_checkout_payment($chat_id, $connect) {
+global $CheckoutPay;
 $step = load_step($chat_id);
 $stars = intval($step['stars'] ?? 0);
 $receiver = $step['receiver'] ?? '';
-$base_amount = $stars * settings($connect)['star_price'];
-$rand_num = rand(1, 100);
-$amount = $base_amount + $rand_num;
+$amount = $stars * settings($connect)['star_price'];
 
-$resp = $CheckCardPay->create_checkout($amount);
+$resp = $CheckoutPay->create_checkout($amount, "Stars {$stars} — {$receiver}");
 if ($resp === false) {
 sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik. Iltimos keyinroq urinib ko'ring.");
 return;
@@ -2823,17 +2853,13 @@ return;
 
 $response = json_decode($resp, true);
 if (!$response) {
-sendMessage($chat_id, "⚠️ CheckCard API dan noaniq javob olindi.");
-error_log("CheckCard create invalid json: " . $resp);
+sendMessage($chat_id, "⚠️ CHECKOUT.UZ API dan noaniq javob olindi.");
+error_log("CHECKOUT.UZ create invalid json: " . $resp);
 return;
 }
 if (isset($response['status']) && $response['status'] === 'error') {
-$msg = $response['message'] ?? 'CheckCard xatolik';
-if ($msg === "There is a pending payment for this amount.") {
-sendMessage($chat_id, "⚠️ Ushbu miqdorda hali yakunlanmagan to'lov mavjud.\n\n💡 Masalan: " . ($amount + 500) . " so'm miqdorida qayta urinib ko'ring.");
-} else {
+$msg = $response['message'] ?? 'CHECKOUT.UZ xatolik';
 sendMessage($chat_id, "⚠️ " . $msg);
-}
 return;
 }
 
@@ -2842,12 +2868,12 @@ $insert_id  = $response['insert_id'] ?? null;
 $pay_url    = $response['pay_url'] ?? null;
 
 if (!$order_code) {
-sendMessage($chat_id, "⚠️ CheckCard javobida order topilmadi.");
-error_log("CheckCard response missing order: " . $resp);
+sendMessage($chat_id, "⚠️ CHECKOUT.UZ javobida order topilmadi.");
+error_log("CHECKOUT.UZ response missing order: " . $resp);
 return;
 }
 
-$stmt = mysqli_prepare($connect, "INSERT INTO review (user_id, order_id, price, status, quantity, username, payment_method, date) VALUES (?, ?, ?, 'unpaid', ?, ?, 'checkcard', NOW())");
+$stmt = mysqli_prepare($connect, "INSERT INTO review (user_id, order_id, price, status, quantity, username, payment_method, date) VALUES (?, ?, ?, 'unpaid', ?, ?, 'checkout', NOW())");
 $user_id_q = intval($chat_id);
 $order_q = $order_code;
 $amount_q = intval($amount);
@@ -2861,7 +2887,7 @@ $kb_rows = [];
 if ($pay_url) {
     $kb_rows[] = [['text' => "💳 To'lov sahifasini ochish", 'url' => $pay_url]];
 }
-$kb_rows[] = [['text' => "♻️ To'lov tekshirish", 'callback_data' => "CheckCard_check={$order_code}"]];
+$kb_rows[] = [['text' => "♻️ To'lov tekshirish", 'callback_data' => "checkout_check={$order_code}"]];
 $kb_rows[] = [['text' => "❌ Bekor qilish", 'callback_data' => "cancelpay={$order_code}"]];
 $keyboard = json_encode(['inline_keyboard' => $kb_rows], JSON_UNESCAPED_UNICODE);
 
@@ -2869,30 +2895,25 @@ sendMessage($chat_id, "<b>⭐️ Stars buyurtma</b>
 
 📋 Buyurtma #" . htmlspecialchars($insert_id ?? $order_code) . "
 🎯 Miqdor: <b>{$stars} ⭐️</b>
-💰 Narxi: <b>" . number_format($base_amount, 0, '.', ' ') . " so'm</b>
+💰 Narxi: <b>" . number_format($amount, 0, '.', ' ') . " so'm</b>
 👤 Qabul qiluvchi: <b>{$receiver}</b>
 
-━━━━━━━━━━━━━━━
-💳 Karta: <code>5614683582279246</code>
-💵 To'lash kerak: <b>" . number_format($amount, 0, '.', ' ') . " so'm</b>
-━━━━━━━━━━━━━━━
+👇 Quyidagi tugma orqali to'lov sahifasiga o'ting va Click, Payme yoki bank kartasi orqali to'lang.
 
-⚠️ Aynan <b>" . number_format($amount, 0, '.', ' ') . " so'm</b> o'tkazing!
+⏰ Havola 1 soat davomida amal qiladi.
 So'ng '♻️ To'lovni tekshirish' tugmasini bosing.", $keyboard);
 
 clear_step($chat_id);
 }
 
-function process_premium_checkcard_payment($chat_id, $connect) {
-global $CheckCardPay;
+function process_premium_checkout_payment($chat_id, $connect) {
+global $CheckoutPay;
 $step = load_step($chat_id);
 $months = intval($step['months'] ?? 0);
 $receiver = $step['receiver'] ?? '';
-$base_amount = intval($step['price'] ?? 0);
-$rand_num = rand(1, 100);
-$amount = $base_amount + $rand_num;
+$amount = intval($step['price'] ?? 0);
 
-$resp = $CheckCardPay->create_checkout($amount);
+$resp = $CheckoutPay->create_checkout($amount, "Premium {$months} oy — {$receiver}");
 if ($resp === false) {
 sendMessage($chat_id, "⚠️ To'lov yaratishda xatolik. Iltimos keyinroq urinib ko'ring.");
 return;
@@ -2900,17 +2921,13 @@ return;
 
 $response = json_decode($resp, true);
 if (!$response) {
-sendMessage($chat_id, "⚠️ CheckCard API dan noaniq javob olindi.");
-error_log("CheckCard create invalid json: " . $resp);
+sendMessage($chat_id, "⚠️ CHECKOUT.UZ API dan noaniq javob olindi.");
+error_log("CHECKOUT.UZ create invalid json: " . $resp);
 return;
 }
 if (isset($response['status']) && $response['status'] === 'error') {
-$msg = $response['message'] ?? 'CheckCard xatolik';
-if ($msg === "There is a pending payment for this amount.") {
-sendMessage($chat_id, "⚠️ Ushbu miqdorda hali yakunlanmagan to'lov mavjud.\n\n💡 Masalan: " . ($amount + 500) . " so'm miqdorida qayta urinib ko'ring.");
-} else {
+$msg = $response['message'] ?? 'CHECKOUT.UZ xatolik';
 sendMessage($chat_id, "⚠️ " . $msg);
-}
 return;
 }
 
@@ -2919,12 +2936,12 @@ $insert_id  = $response['insert_id'] ?? null;
 $pay_url    = $response['pay_url'] ?? null;
 
 if (!$order_code) {
-sendMessage($chat_id, "⚠️ CheckCard javobida order topilmadi.");
-error_log("CheckCard response missing order: " . $resp);
+sendMessage($chat_id, "⚠️ CHECKOUT.UZ javobida order topilmadi.");
+error_log("CHECKOUT.UZ response missing order: " . $resp);
 return;
 }
 
-$stmt = mysqli_prepare($connect, "INSERT INTO premium_orders (user_id, order_id, price, status, quantity, username, payment_method, date) VALUES (?, ?, ?, 'unpaid', ?, ?, 'checkcard', NOW())");
+$stmt = mysqli_prepare($connect, "INSERT INTO premium_orders (user_id, order_id, price, status, quantity, username, payment_method, date) VALUES (?, ?, ?, 'unpaid', ?, ?, 'checkout', NOW())");
 $user_id_q = intval($chat_id);
 $order_q = $order_code;
 $amount_q = intval($amount);
@@ -2938,38 +2955,36 @@ $kb_rows = [];
 if ($pay_url) {
     $kb_rows[] = [['text' => "💳 To'lov sahifasini ochish", 'url' => $pay_url]];
 }
-$kb_rows[] = [['text' => "♻️ To'lov tekshirish", 'callback_data' => "CheckCard_premium_check={$order_code}"]];
+$kb_rows[] = [['text' => "♻️ To'lov tekshirish", 'callback_data' => "checkout_premium_check={$order_code}"]];
 $kb_rows[] = [['text' => "❌ Bekor qilish", 'callback_data' => "cancelpremium={$order_code}"]];
 $keyboard = json_encode(['inline_keyboard' => $kb_rows], JSON_UNESCAPED_UNICODE);
 
-sendMessage($chat_id, "<b>💳 To'lov ma'lumotlari
+sendMessage($chat_id, "<b>💳 To'lov ma'lumotlari</b>
 
 📋 Buyurtma #" . htmlspecialchars($insert_id ?? $order_code) . "
 └ 🎯 Premium: {$months} oy
-└ 💰 Narxi: {$base_amount} so'm
+└ 💰 Narxi: " . number_format($amount, 0, '.', ' ') . " so'm
 └ 👤 Username: {$receiver}
 
-💳 Karta ma'lumotlari:
-└ 🏦 Karta raqami: <code>9860036625185040</code>
-└ 💵 To'lov miqdori: {$amount} so'm
+👇 Quyidagi tugma orqali to'lov sahifasiga o'ting va Click, Payme yoki bank kartasi orqali to'lang.
 
-⚠️ Muhim: Ko'rsatilgan miqdorni to'lang: {$amount} so'm (aniq miqdorda)
-📱 To'lov qilganingizdan so'ng, botda '♻️ To'lov tekshirish' tugmasini bosing</b>", $keyboard);
+⏰ Havola 1 soat davomida amal qiladi.
+📱 To'lov qilganingizdan so'ng, botda '♻️ To'lov tekshirish' tugmasini bosing", $keyboard);
 
 clear_step($chat_id);
 }
 
-if ($callback_data && strpos($callback_data, "CheckCard_check=") === 0) {
+if ($callback_data && strpos($callback_data, "checkout_check=") === 0) {
 $order_code = explode("=", $callback_data)[1];
 
-$stmt = mysqli_prepare($connect, "SELECT * FROM review WHERE order_id = ? AND payment_method = 'checkcard' LIMIT 1");
+$stmt = mysqli_prepare($connect, "SELECT * FROM review WHERE order_id = ? AND payment_method = 'checkout' LIMIT 1");
 mysqli_stmt_bind_param($stmt, 's', $order_code);
 mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
 $row = mysqli_fetch_assoc($res);
 mysqli_stmt_close($stmt);
 
-$response = $CheckCardPay->check_payment($order_code);
+$response = $CheckoutPay->check_payment($order_code);
 if ($response === false) {
 answerCallback($callback_id, "⚠️ To'lovni tekshirishda xatolik.", true);
 exit;
@@ -3016,7 +3031,7 @@ mysqli_stmt_close($stmt);
 $quantity = isset($row['quantity']) ? intval($row['quantity']) : 0;
 $username_target = !empty($row['username']) ? $row['username'] : 'N/A';
 $price = !empty($row['price']) ? $row['price'] : intval($summa);
-$logText = "<b>✅ Buyurtma bajarildi (CheckCard)</b>\n\n🆔 <b>OrderCode:</b> {$order_code}\n👤 <b>Foydalanuvchi (chat_id):</b> {$user_id}\n📛 <b>Username:</b> {$username_target}\n⭐ <b>Stars:</b> {$quantity}\n💰 <b>Narx:</b> {$price} so'm\n📝 <b>OrderID (review.id):</b> " . ($review_id ?? 'N/A');
+$logText = "<b>✅ Buyurtma bajarildi (CHECKOUT.UZ)</b>\n\n🆔 <b>OrderCode:</b> {$order_code}\n👤 <b>Foydalanuvchi (chat_id):</b> {$user_id}\n📛 <b>Username:</b> {$username_target}\n⭐ <b>Stars:</b> {$quantity}\n💰 <b>Narx:</b> {$price} so'm\n📝 <b>OrderID (review.id):</b> " . ($review_id ?? 'N/A');
 $logs_chat = settings($connect)['logs'];
 sendMessage($logs_chat, $logText);
 sendMessage(CHANNEL_TO_JOIN, $logText);
@@ -3074,16 +3089,16 @@ answerCallback($callback_id, "⚠️ To'lov holati: $status", true);
 exit;
 }
 
-if ($callback_data && strpos($callback_data, "CheckCard_premium_check=") === 0) {
+if ($callback_data && strpos($callback_data, "checkout_premium_check=") === 0) {
 $order_code = explode("=", $callback_data)[1];
-$stmt = mysqli_prepare($connect, "SELECT * FROM premium_orders WHERE order_id = ? AND payment_method = 'checkcard' LIMIT 1");
+$stmt = mysqli_prepare($connect, "SELECT * FROM premium_orders WHERE order_id = ? AND payment_method = 'checkout' LIMIT 1");
 mysqli_stmt_bind_param($stmt, 's', $order_code);
 mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
 $row = mysqli_fetch_assoc($res);
 mysqli_stmt_close($stmt);
 
-$response = $CheckCardPay->check_payment($order_code);
+$response = $CheckoutPay->check_payment($order_code);
 if ($response === false) {
 answerCallback($callback_id, "⚠️ To'lovni tekshirishda xatolik.", true);
 exit;
@@ -3130,7 +3145,7 @@ mysqli_stmt_close($stmt);
 $quantity = isset($row['quantity']) ? intval($row['quantity']) : 0;
 $username_target = !empty($row['username']) ? $row['username'] : 'N/A';
 $price = !empty($row['price']) ? $row['price'] : intval($summa);
-$logText = "<b>✅ Premium buyurtma bajarildi (CheckCard)</b>\n\n🆔 <b>OrderCode:</b> {$order_code}\n👤 <b>Foydalanuvchi (chat_id):</b> {$user_id}\n📛 <b>Username:</b> {$username_target}\n👑 <b>Premium:</b> {$quantity} oy\n💰 <b>Narx:</b> {$price} so'm\n📝 <b>OrderID (premium_orders.id):</b> " . ($review_id ?? 'N/A');
+$logText = "<b>✅ Premium buyurtma bajarildi (CHECKOUT.UZ)</b>\n\n🆔 <b>OrderCode:</b> {$order_code}\n👤 <b>Foydalanuvchi (chat_id):</b> {$user_id}\n📛 <b>Username:</b> {$username_target}\n👑 <b>Premium:</b> {$quantity} oy\n💰 <b>Narx:</b> {$price} so'm\n📝 <b>OrderID (premium_orders.id):</b> " . ($review_id ?? 'N/A');
 $logs_chat = settings($connect)['logs'];
 sendMessage($logs_chat, $logText);
 sendMessage(CHANNEL_TO_JOIN, $logText);
