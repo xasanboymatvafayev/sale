@@ -5,11 +5,11 @@ date_default_timezone_set('Asia/Tashkent');
 define("API_KEY", '8663180438:AAFKDMYpbmvVhqHFc2IMZre12rpaU03AbEw');  //token
 $admin = 6365371142; //adminid
 
-define("DB_SERVER", "autorack.proxy.rlwy.net");
+define("DB_SERVER", "sakura.proxy.rlwy.net");
 define("DB_USERNAME", "root");
-define("DB_PASSWORD", "SngtdKxJGJMafHfetMzLBszTQwMprNwi");
+define("DB_PASSWORD", "VhJhPQpkgnteuJuImBYWkooiXMjiTAeG");
 define("DB_NAME", "railway");
-define("DB_PORT", 57444);
+define("DB_PORT", 59500);
 define('CHECKOUT_API_KEY', 'YOUR_CHECKOUT_UZ_API_KEY'); // checkout.uz dashboard → kassa sozlamalari → API
 define('CHECKOUT_BASE_URL', 'https://checkout.uz/api/v1'); // asosiy manzil (backup: https://pre-view.checkout.uz/api/v1)
 define('CHANNEL_TO_JOIN', '@Nitesms'); // Tolovlar kanali
